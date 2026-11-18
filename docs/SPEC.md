@@ -409,8 +409,13 @@ so it can be unit tested and used by `render`/`export` without the TUI.
 - pthreads, libm
 - No curses library. The TUI is hand-written ANSI, like btop.
 
-Make targets: `make` (debug, `-g -O0 -fsanitize=address,undefined`),
-`make release` (`-O2`), `make test`, `make clean`. Header dependencies
+charcoal is an installed command-line tool used like `btop`: it runs as
+`charcoal` from any directory, not as `./charcoal` from the repo.
+
+Make targets: `make` (debug, `-g -O0`, plus `-fsanitize=address,undefined`
+when the runtimes are installed), `make release` (`-O2`), `make test`,
+`make golden`, `make install` / `make uninstall` (`PREFIX`, default
+`/usr/local`, and `DESTDIR` for packaging), `make clean`. Header dependencies
 (`-MMD -MP`) and flag-change rebuilds are carried over from the ascii_art
 Makefile fix.
 

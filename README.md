@@ -3,8 +3,8 @@
 A terminal ASCII art viewer for images, animations and video, written in C,
 with a btop-inspired interface.
 
-> Status: planning. See [docs/SPEC.md](docs/SPEC.md) for the full specification
-> and milestones.
+> Status: M1 in progress (`render` for still images). See
+> [docs/SPEC.md](docs/SPEC.md) for the full specification and milestones.
 
 ## Planned features
 
@@ -19,9 +19,39 @@ with a btop-inspired interface.
 ## Building
 
 Requires a C11 compiler and the FFmpeg development libraries
-(`libavformat`, `libavcodec`, `libavutil`, `libswscale`).
+(`libavformat`, `libavcodec`, `libavutil`, `libswscale`). Debug builds use
+ASan and UBSan when their runtimes are installed.
 
 ```bash
-make            # debug build
-make release    # optimized build
+# Fedora
+sudo dnf install ffmpeg-free-devel libasan libubsan
+# Debian/Ubuntu
+sudo apt install libavformat-dev libavcodec-dev libswscale-dev
 ```
+
+```bash
+make            # debug build (ASan + UBSan)
+make release    # optimized build
+make test       # unit tests (no FFmpeg needed)
+make golden     # render samples/ and compare with tests/golden/
+```
+
+## Installing
+
+```bash
+make release && sudo make install    # /usr/local/bin/charcoal
+make install PREFIX=~/.local         # ~/.local/bin/charcoal, no sudo
+make uninstall                       # same PREFIX as install
+```
+
+## Usage
+
+```bash
+charcoal photo.jpg                       # fit the terminal, half blocks
+charcoal render photo.jpg -m ascii       # classic ASCII ramp
+charcoal render photo.jpg -m ascii -p detailed -c mono -w 80
+charcoal export photo.jpg -o photo.ans   # .txt or .ans
+```
+
+Until the interactive viewer lands (M3), `charcoal <file>` prints once like
+`render`.
