@@ -18,11 +18,21 @@ static const char *COLOR_NAMES[COLOR_COUNT] = {
     "true", "256", "16", "mono",
 };
 
+static const char *DITHER_NAMES[DITHER_COUNT] = {
+    "none", "floyd", "bayer",
+};
+
 void render_opts_default(RenderOpts *o) {
     o->mode = MODE_HALF;
     o->color = COLOR_TRUE;
     o->palette = PALETTE_STANDARD;
     o->invert = 0;
+    o->dither = DITHER_NONE;
+    o->brightness = 0.0;
+    o->contrast = 1.0;
+    o->gamma = 1.0;
+    o->saturation = 1.0;
+    o->cell_aspect = 2.0;
 }
 
 int glyph_mode_from_name(const char *name) {
@@ -37,6 +47,15 @@ int glyph_mode_from_name(const char *name) {
 int color_depth_from_name(const char *name) {
     for (int i = 0; i < COLOR_COUNT; i++) {
         if (strcmp(name, COLOR_NAMES[i]) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int dither_mode_from_name(const char *name) {
+    for (int i = 0; i < DITHER_COUNT; i++) {
+        if (strcmp(name, DITHER_NAMES[i]) == 0) {
             return i;
         }
     }
@@ -132,7 +151,8 @@ int render_frame(const Frame *f, const RenderOpts *o, Grid *g) {
         free(px);
         return -1;
     }
-    glyph_render(px, o, g);
+    adjust_rgb(px, w * h, o);
+    int rc = glyph_render(px, o, g);
     free(px);
-    return 0;
+    return rc;
 }
