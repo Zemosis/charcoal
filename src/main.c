@@ -38,6 +38,9 @@ static void usage(FILE *out);
 static const char *option_value(int argc, char **argv, int *i,
                                 const char *arg, const char *s, const char *l);
 static int parse_int(const char *s, const char *name, int *out);
+static int parse_double(const char *s, const char *name, double lo, double hi,
+                        double *out);
+static ColorDepth detect_color(void);
 static int parse_args(int argc, char **argv, Args *a);
 static int terminal_size(int *cols, int *rows, double *cell_aspect);
 static int write_all(FILE *f, const Buf *b);
@@ -53,16 +56,24 @@ static void usage(FILE *out) {
         "  charcoal export <file> -o <out> [options] write .txt or .ans\n"
         "\n"
         "Options:\n"
-        "  -m, --mode MODE        ascii, blocks, half (default)\n"
+        "  -m, --mode MODE        half (default), ascii, blocks, quad, braille,\n"
+        "                         edges\n"
         "  -p, --palette NAME     standard, detailed, simple, blocks,\n"
         "                         or your own ramp, darkest first\n"
-        "  -c, --color DEPTH      true or mono (default: true, mono if NO_COLOR)\n"
+        "  -c, --color DEPTH      auto (default), true, 256, 16, mono\n"
+        "  -d, --dither KIND      none (default), floyd, bayer\n"
         "  -w, --width N          output width in characters\n"
         "  -H, --height N         output height in characters\n"
-        "  -i, --invert           flip brightness\n"
+        "  -i, --invert           flip brightness, for light terminal backgrounds\n"
+        "      --brightness N     -1 to 1 (default 0)\n"
+        "      --contrast N       0 to 4 (default 1)\n"
+        "      --gamma N          0.1 to 5 (default 1, higher is brighter)\n"
+        "      --saturation N     0 to 4 (default 1, 0 is grayscale)\n"
         "  -o, --output FILE      export target (export only)\n"
         "  -h, --help             show this help\n"
-        "  -V, --version          show the version\n",
+        "  -V, --version          show the version\n"
+        "\n"
+        "Color auto-detection reads COLORTERM and TERM; NO_COLOR forces mono.\n",
         VERSION);
 }
 
@@ -95,13 +106,42 @@ static int parse_int(const char *s, const char *name, int *out) {
     return 0;
 }
 
+// Parse a decimal option within [lo, hi], returns 0 on success
+static int parse_double(const char *s, const char *name, double lo, double hi,
+                        double *out) {
+    char *end;
+    double v = strtod(s, &end);
+    if (end == s || *end != '\0' || !(v >= lo && v <= hi)) {
+        fprintf(stderr, "charcoal: %s must be a number from %g to %g\n", name,
+                lo, hi);
+        return -1;
+    }
+    *out = v;
+    return 0;
+}
+
+// Pick the richest color depth the terminal says it supports
+static ColorDepth detect_color(void) {
+    const char *no_color = getenv("NO_COLOR");
+    if (no_color && *no_color) {
+        return COLOR_MONO;
+    }
+    const char *ct = getenv("COLORTERM");
+    if (ct && (strcmp(ct, "truecolor") == 0 || strcmp(ct, "24bit") == 0)) {
+        return COLOR_TRUE;
+    }
+    const char *term = getenv("TERM");
+    if (term && strstr(term, "256color")) {
+        return COLOR_256;
+    }
+    return COLOR_16;
+}
+
 // Fill a from argv, returns 0 on success, 1 to exit cleanly, -1 on error
 static int parse_args(int argc, char **argv, Args *a) {
     memset(a, 0, sizeof(*a));
     render_opts_default(&a->opts);
-    if (getenv("NO_COLOR") && *getenv("NO_COLOR")) {
-        a->opts.color = COLOR_MONO;
-    }
+    a->opts.color = detect_color();
 
     int i = 1;
     if (i < argc && strcmp(argv[i], "render") == 0) {
@@ -126,11 +166,8 @@ static int parse_args(int argc, char **argv, Args *a) {
         } else if ((v = option_value(argc, argv, &i, arg, "-m", "--mode"))) {
             int m = glyph_mode_from_name(v);
             if (m < 0) {
-                fprintf(stderr, "charcoal: unknown mode '%s'\n", v);
-                return -1;
-            }
-            if (m == MODE_QUAD || m == MODE_BRAILLE || m == MODE_EDGES) {
-                fprintf(stderr, "charcoal: mode '%s' is not implemented yet\n", v);
+                fprintf(stderr, "charcoal: unknown mode '%s' (ascii, blocks, half, quad, "
+                        "braille, edges)\n", v);
                 return -1;
             }
             a->opts.mode = m;
@@ -142,16 +179,37 @@ static int parse_args(int argc, char **argv, Args *a) {
             }
             a->opts.palette = p ? p : v;
         } else if ((v = option_value(argc, argv, &i, arg, "-c", "--color"))) {
-            int c = color_depth_from_name(v);
+            int c = strcmp(v, "auto") == 0 ? (int)detect_color()
+                                           : color_depth_from_name(v);
             if (c < 0) {
-                fprintf(stderr, "charcoal: unknown color depth '%s'\n", v);
-                return -1;
-            }
-            if (c == COLOR_256 || c == COLOR_16) {
-                fprintf(stderr, "charcoal: color '%s' is not implemented yet\n", v);
+                fprintf(stderr, "charcoal: unknown color '%s' (auto, true, 256, 16, mono)\n",
+                        v);
                 return -1;
             }
             a->opts.color = c;
+        } else if ((v = option_value(argc, argv, &i, arg, "-d", "--dither"))) {
+            int d = dither_mode_from_name(v);
+            if (d < 0) {
+                fprintf(stderr, "charcoal: unknown dither '%s' (none, floyd, bayer)\n", v);
+                return -1;
+            }
+            a->opts.dither = d;
+        } else if ((v = option_value(argc, argv, &i, arg, "", "--brightness"))) {
+            if (parse_double(v, "--brightness", -1, 1, &a->opts.brightness)) {
+                return -1;
+            }
+        } else if ((v = option_value(argc, argv, &i, arg, "", "--contrast"))) {
+            if (parse_double(v, "--contrast", 0, 4, &a->opts.contrast)) {
+                return -1;
+            }
+        } else if ((v = option_value(argc, argv, &i, arg, "", "--gamma"))) {
+            if (parse_double(v, "--gamma", 0.1, 5, &a->opts.gamma)) {
+                return -1;
+            }
+        } else if ((v = option_value(argc, argv, &i, arg, "", "--saturation"))) {
+            if (parse_double(v, "--saturation", 0, 4, &a->opts.saturation)) {
+                return -1;
+            }
         } else if ((v = option_value(argc, argv, &i, arg, "-w", "--width"))) {
             if (parse_int(v, "--width", &a->width) != 0) {
                 return -1;
@@ -263,6 +321,8 @@ int main(int argc, char **argv) {
         render_fit(img_w, img_h, DEFAULT_COLS, 10000, aspect, a.opts.mode,
                    &cols, &rows);
     }
+
+    a.opts.cell_aspect = aspect;
 
     // Decode only as many pixels as the cells can show
     int sub_w, sub_h;
