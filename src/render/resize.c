@@ -75,6 +75,11 @@ static int clamp_min1(double v) {
 
 int resize_rgb(const uint8_t *src, int src_w, int src_h, uint8_t *dst,
                int dst_w, int dst_h) {
+    return resize_rgb_rect(src, src_w, 0, 0, src_w, src_h, dst, dst_w, dst_h);
+}
+
+int resize_rgb_rect(const uint8_t *src, int stride, int x0, int y0, int src_w,
+                    int src_h, uint8_t *dst, int dst_w, int dst_h) {
     AxisMap mx = {0}, my = {0};
     float *tmp = NULL;
     int rc = -1;
@@ -90,7 +95,7 @@ int resize_rgb(const uint8_t *src, int src_w, int src_h, uint8_t *dst,
         goto done;
     }
     for (int y = 0; y < src_h; y++) {
-        const uint8_t *row = src + (size_t)y * src_w * 3;
+        const uint8_t *row = src + ((size_t)(y0 + y) * stride + x0) * 3;
         float *out = tmp + (size_t)y * dst_w * 3;
         for (int x = 0; x < dst_w; x++) {
             const float *w = mx.weight + mx.offset[x];

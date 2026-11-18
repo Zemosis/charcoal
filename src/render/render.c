@@ -66,6 +66,14 @@ const char *glyph_mode_name(GlyphMode mode) {
     return (mode >= 0 && mode < MODE_COUNT) ? MODE_NAMES[mode] : "?";
 }
 
+const char *color_depth_name(ColorDepth depth) {
+    return (depth >= 0 && depth < COLOR_COUNT) ? COLOR_NAMES[depth] : "?";
+}
+
+const char *dither_mode_name(DitherMode d) {
+    return (d >= 0 && d < DITHER_COUNT) ? DITHER_NAMES[d] : "?";
+}
+
 const char *palette_from_name(const char *name) {
     if (strcmp(name, "standard") == 0) {
         return PALETTE_STANDARD;

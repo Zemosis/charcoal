@@ -84,6 +84,8 @@ int glyph_mode_from_name(const char *name);
 int color_depth_from_name(const char *name);
 int dither_mode_from_name(const char *name);
 const char *glyph_mode_name(GlyphMode mode);
+const char *color_depth_name(ColorDepth depth);
+const char *dither_mode_name(DitherMode d);
 
 // Look up a built-in palette by name, NULL if unknown
 const char *palette_from_name(const char *name);
@@ -114,6 +116,10 @@ int render_cols_for_rows(int img_w, int img_h, int rows, double cell_aspect);
 // Returns 0 on success, -1 if out of memory
 int resize_rgb(const uint8_t *src, int src_w, int src_h, uint8_t *dst,
                int dst_w, int dst_h);
+
+// Same, for the src_w x src_h region at x0, y0 of an image stride pixels wide
+int resize_rgb_rect(const uint8_t *src, int stride, int x0, int y0, int src_w,
+                    int src_h, uint8_t *dst, int dst_w, int dst_h);
 
 // Apply saturation, then brightness, contrast and gamma to n RGB pixels
 void adjust_rgb(uint8_t *rgb, int n, const RenderOpts *o);
