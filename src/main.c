@@ -1,3 +1,4 @@
+#include "app.h"
 #include "buf.h"
 #include "media.h"
 #include "render.h"
@@ -8,8 +9,6 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#define VERSION "0.1.0-dev"
 
 // Columns used when there is no terminal to fit
 #define DEFAULT_COLS 100
@@ -51,7 +50,7 @@ static void usage(FILE *out) {
         "charcoal %s - terminal ASCII art viewer\n"
         "\n"
         "Usage:\n"
-        "  charcoal <file> [options]                 view a file\n"
+        "  charcoal <file> [options]                 open the viewer\n"
         "  charcoal render <file> [options]          print once and exit\n"
         "  charcoal export <file> -o <out> [options] write .txt or .ans\n"
         "\n"
@@ -74,7 +73,7 @@ static void usage(FILE *out) {
         "  -V, --version          show the version\n"
         "\n"
         "Color auto-detection reads COLORTERM and TERM; NO_COLOR forces mono.\n",
-        VERSION);
+        CHARCOAL_VERSION);
 }
 
 // Match -s VALUE, --long VALUE or --long=VALUE, NULL if arg is not this option
@@ -159,7 +158,7 @@ static int parse_args(int argc, char **argv, Args *a) {
             usage(stdout);
             return 1;
         } else if (strcmp(arg, "-V") == 0 || strcmp(arg, "--version") == 0) {
-            printf("charcoal %s\n", VERSION);
+            printf("charcoal %s\n", CHARCOAL_VERSION);
             return 1;
         } else if (strcmp(arg, "-i") == 0 || strcmp(arg, "--invert") == 0) {
             a->opts.invert = 1;
@@ -283,11 +282,19 @@ int main(int argc, char **argv) {
         return rc > 0 ? 0 : 1;
     }
 
-    // The interactive viewer arrives in M3, until then view prints once
     struct stat st;
     if (stat(a.input, &st) == 0 && S_ISDIR(st.st_mode)) {
         fprintf(stderr, "charcoal: %s is a directory\n", a.input);
         return 1;
+    }
+
+    // The viewer needs a terminal on both ends; otherwise print once
+    if (a.cmd == CMD_VIEW && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
+        if (a.width || a.height) {
+            fprintf(stderr, "charcoal: -w and -H are for render and export\n");
+            return 1;
+        }
+        return app_run(a.input, &a.opts, detect_color());
     }
 
     char err[512];
