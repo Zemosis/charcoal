@@ -1,0 +1,17 @@
+# Build artifacts
+build/
+charcoal
+*.o
+*.d
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+
+# Local test media (keep the repo small)
+samples/local/
