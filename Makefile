@@ -21,6 +21,13 @@ FFMPEG_PKGS = libavformat libavcodec libavutil libswscale
 FFMPEG_CFLAGS = $(shell pkg-config --cflags $(FFMPEG_PKGS) 2>/dev/null)
 FFMPEG_LIBS = $(shell pkg-config --libs $(FFMPEG_PKGS) 2>/dev/null)
 
+# libwebp for animated WebP, used when its development files are installed
+HAVE_WEBP := $(shell pkg-config --exists libwebpdemux 2>/dev/null && echo 1)
+ifeq ($(HAVE_WEBP),1)
+WEBP_CFLAGS = $(shell pkg-config --cflags libwebpdemux) -DHAVE_WEBP
+WEBP_LIBS = $(shell pkg-config --libs libwebpdemux)
+endif
+
 # Directories
 SRC_DIR = src
 TEST_DIR = tests
@@ -31,7 +38,8 @@ CORE_SRCS = $(SRC_DIR)/buf.c $(SRC_DIR)/media/frame.c \
             $(wildcard $(SRC_DIR)/render/*.c) \
             $(SRC_DIR)/tui/screen.c $(SRC_DIR)/tui/draw.c $(SRC_DIR)/tui/theme.c
 APP_SRCS = $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/app.c \
-           $(SRC_DIR)/media/decoder.c $(SRC_DIR)/tui/term.c \
+           $(SRC_DIR)/media/decoder.c $(SRC_DIR)/media/player.c \
+           $(SRC_DIR)/tui/term.c \
            $(wildcard $(SRC_DIR)/tui/views/*.c)
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 
@@ -61,13 +69,16 @@ golden: debug
 	tests/golden.sh
 
 $(TARGET): $(APP_OBJS) | check-ffmpeg
-	$(CC) $(CFLAGS) -o $@ $(APP_OBJS) $(FFMPEG_LIBS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $@ $(APP_OBJS) $(FFMPEG_LIBS) $(WEBP_LIBS) $(LDLIBS)
+	@[ "$(HAVE_WEBP)" = 1 ] || echo "note: libwebp-devel not found, animated WebP will not play"
 
 $(TEST_TARGET): $(CORE_OBJS) $(TEST_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-# Only the decoder includes FFmpeg headers
-$(BUILD_DIR)/$(SRC_DIR)/media/decoder.o: EXTRA_CFLAGS = $(FFMPEG_CFLAGS)
+# Only the decoder and player include FFmpeg headers
+$(BUILD_DIR)/$(SRC_DIR)/media/decoder.o \
+$(BUILD_DIR)/$(SRC_DIR)/media/player.o: EXTRA_CFLAGS = $(FFMPEG_CFLAGS)
+$(BUILD_DIR)/$(SRC_DIR)/media/decoder.o: EXTRA_CFLAGS += $(WEBP_CFLAGS)
 
 $(BUILD_DIR)/%.o: %.c $(FLAGS_FILE)
 	@mkdir -p $(dir $@)
@@ -76,7 +87,8 @@ $(BUILD_DIR)/%.o: %.c $(FLAGS_FILE)
 # Only touched when the flags change, so objects rebuild only then
 $(FLAGS_FILE): FORCE
 	@mkdir -p $(BUILD_DIR)
-	@echo '$(CFLAGS)' | cmp -s - $@ || echo '$(CFLAGS)' > $@
+	@echo '$(CFLAGS) $(WEBP_CFLAGS)' | cmp -s - $@ || \
+	    echo '$(CFLAGS) $(WEBP_CFLAGS)' > $@
 
 # Installs the release build (make release && sudo make install)
 install: CFLAGS += $(RELEASE_FLAGS)

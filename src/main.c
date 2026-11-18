@@ -30,6 +30,9 @@ typedef struct Args {
     RenderOpts opts;
     int width;
     int height;
+    double time;        // --time in seconds, -1 when not given
+    long frame;         // --frame index, -1 when not given
+    int loop;
 } Args;
 
 // Prototype
@@ -67,6 +70,9 @@ static void usage(FILE *out) {
         "      --contrast N       0 to 4 (default 1)\n"
         "      --gamma N          0.1 to 5 (default 1, higher is brighter)\n"
         "      --saturation N     0 to 4 (default 1, 0 is grayscale)\n"
+        "  -t, --time SECONDS     render the video frame shown at this time\n"
+        "      --frame N          render the N-th frame (0 is the first)\n"
+        "      --loop, --no-loop  loop animations and video (default: loop)\n"
         "  -o, --output FILE      export target (export only)\n"
         "  -h, --help             show this help\n"
         "  -V, --version          show the version\n"
@@ -139,6 +145,9 @@ static ColorDepth detect_color(void) {
 static int parse_args(int argc, char **argv, Args *a) {
     memset(a, 0, sizeof(*a));
     render_opts_default(&a->opts);
+    a->time = -1;
+    a->frame = -1;
+    a->loop = 1;
     a->opts.color = detect_color();
 
     int i = 1;
@@ -157,7 +166,9 @@ static int parse_args(int argc, char **argv, Args *a) {
             usage(stdout);
             return 1;
         } else if (strcmp(arg, "-V") == 0 || strcmp(arg, "--version") == 0) {
-            printf("charcoal %s\n", CHARCOAL_VERSION);
+            char libs[128];
+            media_versions(libs, sizeof(libs));
+            printf("charcoal %s (%s)\n", CHARCOAL_VERSION, libs);
             return 1;
         } else if (strcmp(arg, "-i") == 0 || strcmp(arg, "--invert") == 0) {
             a->opts.invert = 1;
@@ -223,6 +234,22 @@ static int parse_args(int argc, char **argv, Args *a) {
             }
         } else if ((v = option_value(argc, argv, &i, arg, "-o", "--output"))) {
             a->output = v;
+        } else if ((v = option_value(argc, argv, &i, arg, "-t", "--time"))) {
+            if (parse_double(v, "--time", 0, 1e7, &a->time)) {
+                return -1;
+            }
+        } else if ((v = option_value(argc, argv, &i, arg, "", "--frame"))) {
+            char *end;
+            long fv = strtol(v, &end, 10);
+            if (end == v || *end != '\0' || fv < 0) {
+                fprintf(stderr, "charcoal: --frame must be 0 or more\n");
+                return -1;
+            }
+            a->frame = fv;
+        } else if (strcmp(arg, "--loop") == 0) {
+            a->loop = 1;
+        } else if (strcmp(arg, "--no-loop") == 0) {
+            a->loop = 0;
         } else if (arg[0] == '-' && arg[1] != '\0') {
             fprintf(stderr, "charcoal: unknown option '%s'\n", arg);
             return -1;
@@ -298,7 +325,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "charcoal: -w and -H are for render and export\n");
             return 1;
         }
-        return app_run(a.input, &a.opts, detect_color());
+        return app_run(a.input, &a.opts, detect_color(), a.loop);
     }
 
     char err[512];
@@ -311,7 +338,7 @@ int main(int argc, char **argv) {
     media_size(m, &img_w, &img_h);
 
     // Output size: explicit, else fit the terminal, else a fixed width
-    int cols = 0, rows = 0, term_cols, term_rows;
+    int cols = 0, rows = 0, term_cols = 0, term_rows = 0;
     double aspect = DEFAULT_CELL_ASPECT;
     int have_term = a.cmd != CMD_EXPORT &&
                     terminal_size(&term_cols, &term_rows, &aspect) == 0;
@@ -338,8 +365,11 @@ int main(int argc, char **argv) {
     // Decode only as many pixels as the cells can show
     int sub_w, sub_h;
     mode_subpixels(a.opts.mode, &sub_w, &sub_h);
-    Frame *f = media_decode_first(m, cols * sub_w, rows * sub_h, err,
-                                  sizeof(err));
+    // --frame wins over --time; neither means the first frame
+    int64_t t_us = a.time > 0 ? (int64_t)(a.time * 1e6) : 0;
+    int64_t index = a.frame >= 0 ? a.frame : a.time > 0 ? -1 : 0;
+    Frame *f = media_decode_at(m, t_us, index, cols * sub_w, rows * sub_h, err,
+                               sizeof(err));
     media_close(m);
     if (!f) {
         fprintf(stderr, "charcoal: %s: %s\n", a.input, err);
