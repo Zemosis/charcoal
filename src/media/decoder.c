@@ -158,6 +158,10 @@ fail:
     return NULL;
 }
 
+const char *media_codec_name(const MediaFile *m) {
+    return m->codec->name;
+}
+
 void media_size(const MediaFile *m, int *width, int *height) {
     *width = m->width;
     *height = m->height;

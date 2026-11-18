@@ -31,6 +31,9 @@ typedef struct MediaFile MediaFile;
 // On failure returns NULL and writes a message to err
 MediaFile *media_open(const char *path, char *err, int err_len);
 
+// Short codec name for display, such as "mjpeg", "png" or "h264"
+const char *media_codec_name(const MediaFile *m);
+
 // Full-resolution size of the image or video
 void media_size(const MediaFile *m, int *width, int *height);
 
