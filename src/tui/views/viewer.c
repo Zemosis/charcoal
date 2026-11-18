@@ -46,13 +46,16 @@ void viewer_update(App *a) {
     }
     a->dirty = 0;
     Rect in = rect_inner(a->r_viewer);
+    if (a->compact) {
+        in = a->r_viewer;
+    }
     if (in.w < 1 || in.h < 1) {
         return;
     }
     double t0 = now_ms();
 
     // Scale in cell widths per image pixel; a cell is cell_aspect tall
-    double W = a->frame->width, H = a->frame->height, A = a->cell_aspect;
+    double W = a->src_w, H = a->src_h, A = a->cell_aspect;
     double fx = in.w / W, fy = in.h * A / H;
     double kx, ky;
     if (a->fit == FIT_STRETCH) {
@@ -67,28 +70,50 @@ void viewer_update(App *a) {
     // Cells used, then the part of the image they show
     int cols = clampi((int)lround(W * kx), 1, in.w);
     int rows = clampi((int)lround(H * ky / A), 1, in.h);
-    double src_w = fmin(cols / kx, W), src_h = fmin(rows * A / ky, H);
-    a->pan_x = fmin(fmax(a->pan_x, src_w / 2), W - src_w / 2);
-    a->pan_y = fmin(fmax(a->pan_y, src_h / 2), H - src_h / 2);
-    int rw = clampi((int)lround(src_w), 1, (int)W);
-    int rh = clampi((int)lround(src_h), 1, (int)H);
-    int rx = clampi((int)lround(a->pan_x - src_w / 2), 0, (int)W - rw);
-    int ry = clampi((int)lround(a->pan_y - src_h / 2), 0, (int)H - rh);
+    double vis_w = fmin(cols / kx, W), vis_h = fmin(rows * A / ky, H);
+    a->pan_x = fmin(fmax(a->pan_x, vis_w / 2), W - vis_w / 2);
+    a->pan_y = fmin(fmax(a->pan_y, vis_h / 2), H - vis_h / 2);
+    double vis_x = a->pan_x - vis_w / 2, vis_y = a->pan_y - vis_h / 2;
 
     int sub_w, sub_h;
     mode_subpixels(a->opts.mode, &sub_w, &sub_h);
     int out_w = cols * sub_w, out_h = rows * sub_h;
+
+    // Ask the player for frames just big enough for this view
+    if (a->player) {
+        double f = fmin(1.0, fmax(out_w / vis_w, out_h / vis_h));
+        int want_w = clampi((int)ceil(W * f), 1, (int)W);
+        int want_h = clampi((int)ceil(H * f), 1, (int)H);
+        if (want_w != a->want_w || want_h != a->want_h) {
+            a->want_w = want_w;
+            a->want_h = want_h;
+            player_set_target(a->player, want_w, want_h);
+            a->target_changed = 1;
+        }
+    }
+    if (!a->frame) {
+        return;
+    }
+
+    // The same region in the current frame's pixels (video frames are smaller)
+    int fw = a->frame->width, fh = a->frame->height;
+    double sx = fw / W, sy = fh / H;
+    int rx = clampi((int)lround(vis_x * sx), 0, fw - 1);
+    int ry = clampi((int)lround(vis_y * sy), 0, fh - 1);
+    int rw = clampi((int)lround(vis_w * sx), 1, fw - rx);
+    int rh = clampi((int)lround(vis_h * sy), 1, fh - ry);
+
     size_t bytes = (size_t)out_w * (size_t)out_h * 3;
     if (ensure_buffers(a, bytes) != 0) {
         snprintf(a->message, sizeof(a->message), "out of memory");
         return;
     }
 
-    // Resizing the full image is the slow step, so it is cached
-    int key[6] = {rx, ry, rw, rh, out_w, out_h};
+    // Resizing a big image is the slow step, so it is cached per frame
+    int key[7] = {rx, ry, rw, rh, out_w, out_h, a->frame_serial};
     if (memcmp(key, a->pixels_key, sizeof(key)) != 0) {
-        if (resize_rgb_rect(a->frame->rgb, a->frame->width, rx, ry, rw, rh,
-                            a->pixels, out_w, out_h) != 0) {
+        if (resize_rgb_rect(a->frame->rgb, fw, rx, ry, rw, rh, a->pixels, out_w,
+                            out_h) != 0) {
             snprintf(a->message, sizeof(a->message), "out of memory");
             return;
         }

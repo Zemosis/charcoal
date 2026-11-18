@@ -152,16 +152,28 @@ void view_info(App *a) {
     char v[64];
     info_row(a, in, 0, "file", a->name);
     info_row(a, in, 1, "codec", a->codec);
-    snprintf(v, sizeof(v), "%d×%d", a->frame->width, a->frame->height);
-    info_row(a, in, 2, "size", v);
+    if (a->kind == MEDIA_VIDEO && a->fps > 0) {
+        snprintf(v, sizeof(v), "video · %.4g fps", a->fps);
+    } else {
+        snprintf(v, sizeof(v), "%s", a->kind == MEDIA_STILL      ? "still"
+                                     : a->kind == MEDIA_ANIMATED ? "animated"
+                                                                 : "video");
+    }
+    info_row(a, in, 2, "kind", v);
+    snprintf(v, sizeof(v), "%d×%d", a->src_w, a->src_h);
+    info_row(a, in, 3, "size", v);
     if (a->art) {
         snprintf(v, sizeof(v), "%d×%d cells", a->art->cols, a->art->rows);
-        info_row(a, in, 3, "view", v);
+        info_row(a, in, 4, "view", v);
     }
     snprintf(v, sizeof(v), "%.2f×", a->zoom);
-    info_row(a, in, 4, "zoom", v);
+    info_row(a, in, 5, "zoom", v);
     snprintf(v, sizeof(v), "%.1f ms", a->render_ms);
-    info_row(a, in, 5, "render", v);
+    info_row(a, in, 6, "render", v);
+    if (a->kind != MEDIA_STILL) {
+        snprintf(v, sizeof(v), "%d", a->dropped);
+        info_row(a, in, 7, "dropped", v);
+    }
 }
 
 void view_controls(App *a) {
