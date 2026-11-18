@@ -173,6 +173,9 @@ void view_info(App *a) {
     if (a->kind != MEDIA_STILL) {
         snprintf(v, sizeof(v), "%d", a->dropped);
         info_row(a, in, 7, "dropped", v);
+        snprintf(v, sizeof(v), "%.0f fps \u00b7 %.0f ms", a->out_fps,
+                 a->term_lag_ms);
+        info_row(a, in, 8, "output", v);
     }
 }
 

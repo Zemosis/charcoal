@@ -34,7 +34,8 @@ enum {
     KEY_PAGE_DOWN,
     KEY_DELETE,
     KEY_F1,
-    KEY_F2
+    KEY_F2,
+    KEY_TERM_OK         // the terminal answered a status request (ESC [5n)
 };
 
 // What term_wait woke up for, as bits

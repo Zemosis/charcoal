@@ -7,7 +7,7 @@
 #include <time.h>
 
 #define SIDE_W 30
-#define INFO_H 10
+#define INFO_H 11
 #define TIMELINE_H 3
 #define MIN_COLS 80
 #define MIN_ROWS 24
@@ -16,6 +16,11 @@
 
 // Largest per-channel color change not redrawn during playback
 #define PLAY_TOLERANCE 8
+
+// Flow control: after a frame, ask the terminal to report back (ESC [5n)
+// and send nothing new until it does, or until this many ms passed
+#define ACK_TIMEOUT_MS 250
+#define STATUS_REQUEST "\033[5n"
 
 // Playback speeds < and > step through
 static const double SPEEDS[] = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0};
@@ -139,6 +144,14 @@ static void layout(App *a) {
 
 static void draw(App *a) {
     const Theme *t = a->theme;
+    double now = now_ms();
+
+    // A terminal that is still busy with the last frame would only queue
+    // this one, and the picture would fall behind: wait for its answer
+    if (a->awaiting_ack && now - a->ack_sent_ms < ACK_TIMEOUT_MS) {
+        return;
+    }
+    a->awaiting_ack = 0;
     // Video noise flickers flat areas by a few steps each frame; sending
     // those cells is costly and invisible. Paused frames are exact again.
     a->screen->tolerance = a->playing ? PLAY_TOLERANCE : 0;
@@ -160,8 +173,24 @@ static void draw(App *a) {
     Buf out;
     buf_init(&out);
     screen_flush(a->screen, &out);
+    // More than the empty synchronized-output markers: something changed
+    if (out.len > 16) {
+        buf_puts(&out, STATUS_REQUEST);
+        a->awaiting_ack = 1;
+        a->ack_sent_ms = now;
+    }
     term_write(&out);
     buf_free(&out);
+
+    if (!a->frame_drawn) {
+        a->frame_drawn = 1;
+        a->frames_out++;
+    }
+    if (now - a->fps_window_ms >= 1000.0) {
+        a->out_fps = a->frames_out * 1000.0 / (now - a->fps_window_ms);
+        a->frames_out = 0;
+        a->fps_window_ms = now;
+    }
 }
 
 // Move the view by a fraction of what is visible
@@ -204,6 +233,10 @@ static void clock_set(App *a, int64_t play_us) {
 
 // Put a frame from the player on screen
 static void show_frame(App *a, Frame *f) {
+    if (a->frame && !a->frame_drawn) {
+        a->dropped++;   // replaced before it ever reached the terminal
+    }
+    a->frame_drawn = 0;
     frame_free(a->frame);
     a->frame = f;
     a->frame_serial++;
@@ -218,7 +251,6 @@ static int advance(App *a) {
     }
     Frame *f;
     int64_t now = clock_now(a);
-    int shown = 0;
     while ((f = player_peek(a->player)) &&
            (a->need_first || (a->playing && f->play_us <= now))) {
         f = player_pop(a->player);
@@ -228,11 +260,7 @@ static int advance(App *a) {
             now = f->play_us;
             a->need_first = 0;
         }
-        if (shown) {
-            a->dropped++;       // a newer frame was also due: skip this one
-        }
         show_frame(a, f);
-        shown = 1;
     }
 
     if (a->playing && !f && player_at_end(a->player)) {
@@ -340,6 +368,14 @@ static int handle_playback_key(App *a, int key) {
 }
 
 static void handle_key(App *a, int key) {
+    if (key == KEY_TERM_OK) {
+        // Smoothed so the info panel does not jitter
+        double lag = now_ms() - a->ack_sent_ms;
+        a->term_lag_ms = a->term_lag_ms > 0 ? 0.8 * a->term_lag_ms + 0.2 * lag
+                                            : lag;
+        a->awaiting_ack = 0;
+        return;
+    }
     a->message[0] = '\0';
     if (a->overlay == OVERLAY_HELP) {
         if (key == KEY_CTRL_C) {
@@ -364,6 +400,7 @@ static void handle_key(App *a, int key) {
         int64_t t = clock_now(a);
         term_suspend();
         a->screen->full = 1;
+        a->awaiting_ack = 0;
         clock_set(a, t);
         break;
     }
@@ -551,6 +588,12 @@ int app_run(const char *path, const RenderOpts *opts, ColorDepth ui_depth,
             handle_key(&a, key);
         }
         timeout = advance(&a);
+        if (a.awaiting_ack) {
+            // Wake up in time to give up on a terminal that never answers
+            int left = (int)(ACK_TIMEOUT_MS - (now_ms() - a.ack_sent_ms)) + 1;
+            timeout = timeout < 0 || left < timeout ? (left < 0 ? 0 : left)
+                                                    : timeout;
+        }
     }
 
     term_restore();

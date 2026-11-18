@@ -69,6 +69,13 @@ typedef struct App {
     double clock_wall_ms;
     int need_first;             // show the next frame that arrives, now
     int dropped;                // frames skipped to keep up
+    int frame_drawn;            // the frame on screen reached the terminal
+    int awaiting_ack;           // a frame went out, the terminal has not
+    double ack_sent_ms;         // answered yet
+    double term_lag_ms;         // how long the terminal takes per frame
+    int frames_out;             // frames sent in the current second
+    double fps_window_ms;
+    double out_fps;             // frames per second the terminal shows
     int want_w;                 // frame size asked of the player
     int want_h;
     int target_changed;
