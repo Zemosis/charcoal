@@ -42,6 +42,7 @@ enum {
 #define TERM_EV_RESIZE 0x02
 #define TERM_EV_RESUME 0x04
 #define TERM_EV_QUIT   0x08
+#define TERM_EV_EXTRA  0x10
 
 typedef struct Rect {
     int x;
@@ -74,6 +75,7 @@ typedef struct Screen {
     Cell *back;             // the next frame
     ColorDepth depth;       // what the terminal can show
     int full;               // redraw everything on the next flush
+    int tolerance;          // skip cells whose colors moved this little
 } Screen;
 
 // The built-in default theme, gruvbox dark
@@ -91,9 +93,9 @@ void term_suspend(void);
 // Terminal size in cells and the cell height / width ratio
 void term_size(int *cols, int *rows, double *cell_aspect);
 
-// Block until input, a signal, or timeout_ms (-1 waits forever)
-// Returns TERM_EV_* bits
-int term_wait(int timeout_ms);
+// Block until input, a signal, extra_fd turning readable (-1 for none), or
+// timeout_ms (-1 waits forever); returns TERM_EV_* bits
+int term_wait(int timeout_ms, int extra_fd);
 
 // Next decoded key from input already read, KEY_NONE when there is none
 int term_read_key(void);

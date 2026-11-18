@@ -170,19 +170,23 @@ static int input_ready(int timeout_ms) {
     return poll(&p, 1, timeout_ms) > 0;
 }
 
-int term_wait(int timeout_ms) {
+int term_wait(int timeout_ms, int extra_fd) {
     if (in_len > 0) {
         return TERM_EV_INPUT;
     }
-    struct pollfd fds[2] = {
+    struct pollfd fds[3] = {
         {STDIN_FILENO, POLLIN, 0},
         {sig_pipe[0], POLLIN, 0},
+        {extra_fd, POLLIN, 0},
     };
-    if (poll(fds, 2, timeout_ms) <= 0) {
+    if (poll(fds, extra_fd >= 0 ? 3 : 2, timeout_ms) <= 0) {
         return 0;
     }
 
     int ev = 0;
+    if (extra_fd >= 0 && (fds[2].revents & POLLIN)) {
+        ev |= TERM_EV_EXTRA;
+    }
     if (fds[1].revents & POLLIN) {
         char c[32];
         ssize_t n;
