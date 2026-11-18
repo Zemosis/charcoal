@@ -16,6 +16,7 @@ int main(void) {
     run("glyph", test_glyph);
     run("export", test_export);
     run("color", test_color);
+    run("screen", test_screen);
 
     printf("\n%d checks, %d failed\n", test_checks, test_failures);
     return test_failures ? 1 : 0;
