@@ -227,36 +227,57 @@ averages, so their colors are not dithered.
 ╰────────────────────────────────────────────────────────────────────────╯
 ```
 
-- The side panels take a fixed ~30 columns. `1`–`5` toggle each panel. With
-  all side panels hidden, the viewer fills the screen.
+- The side panels take a fixed 30 columns: info on top, controls below
+  (filling the rest of the column until the histogram exists). `1`–`5`
+  toggle each panel. With all side panels hidden, the viewer fills the
+  screen; with the viewer hidden, the side panels take the full width.
+- The file name sits in the viewer's top border as a `┐name┌` label (long
+  names keep their end, where the extension is); one-off notes go in the
+  bottom border.
+- The viewer always fits the image to the panel, enlarging small images with
+  nearest-neighbor pixels (decided 2026-11-18). `charcoal render` keeps never
+  enlarging. `fit` picks contain (whole image), cover (fills, crops) or
+  stretch (ignores aspect).
 - The timeline shows only for animated and video input.
-- Below 80×24, side panels auto-hide and a one-line status bar replaces them.
+- Below 80×24, side panels and the viewer border auto-hide and a one-line
+  status bar shows the mode, color, dither, zoom and the selected control.
+
+The controls panel works like btop's option lists (decided 2026-11-18): one
+row is highlighted with a solid accent bar showing `← value →`, `↑`/`↓`
+select a row and `←`/`→` change it. Rows with a hotkey show its letter in
+the accent color (`m`ode, `p`alette, `c`olor, `d`ither, `i`nvert, `f`it);
+pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
+(brightness) or 0.1 and snap to that grid.
 
 ### 6.3 Key bindings
 
 | Key | Action |
 |---|---|
-| `q`, `Ctrl+C` | Quit |
-| `?`, `h`, `F1` | Help overlay |
-| `o`, `F2` | Options overlay |
+| `q`, `Ctrl+C` | Quit (`q` closes an open overlay first) |
+| `?`, `F1` (and `h` with vim keys off) | Help overlay |
+| `Esc` | Close the overlay |
+| `o`, `F2` | Options overlay (M5) |
 | `1`–`5` | Toggle panel |
+| `↑` / `↓` (`k` / `j` with vim keys) | Select a control |
+| `←` / `→` (`h` / `l` with vim keys) | Change the selected control |
 | `m` / `M` | Next / previous glyph mode |
 | `p` / `P` | Next / previous palette |
-| `c` | Cycle color depth |
+| `c` / `C` | Next / previous color depth |
 | `d` | Cycle dithering |
 | `i` | Toggle invert |
 | `f` | Cycle fit (contain / cover / stretch) |
 | `+` / `-` | Zoom in / out (past 1:1 with nearest-neighbor upscaling) |
-| arrows, `h j k l` (vim keys option) | Pan when zoomed |
+| `Shift`+arrows (`H J K L` with vim keys) | Pan when zoomed |
 | `r` | Reset zoom, pan and adjustments |
+| `Ctrl+Z` | Suspend to the shell; `fg` brings the viewer back |
 | `Space` | Play / pause |
 | `,` / `.` | Step one frame back / forward (paused) |
 | `[` / `]` | Seek −5 s / +5 s |
 | `{` / `}` | Seek −30 s / +30 s |
 | `<` / `>` | Playback speed down / up |
-| `L` | Toggle loop |
+| loop key: TBD in M4 (`L` is vim pan right) | Toggle loop |
 | `e` | Export the current frame (prompts for a filename) |
-| `Ctrl+R` | Reload config and themes |
+| `Ctrl+R` | Redraw; also reloads config and themes from M5 |
 
 Mouse support (click panel buttons, scroll to zoom) is planned for M6.
 
@@ -354,7 +375,7 @@ is out of scope for v1.
 
 ```
 charcoal/
-├── include/            public headers, one per module
+├── include/            buf.h, media.h, render.h, tui.h, app.h
 ├── src/
 │   ├── main.c          argument parsing, mode dispatch
 │   ├── app.c           app state, event loop, key handling
@@ -376,8 +397,8 @@ charcoal/
 │       ├── draw.c      boxes, titles, buttons, text, braille graphs
 │       ├── theme.c     theme tables, built-ins
 │       ├── layout.c    panel placement, resize
-│       └── views/      viewer, info, controls, histogram, timeline,
-│                       help, options
+│       └── views/      viewer.c, panels.c (info, controls, status),
+│                       help.c; later histogram, timeline, options
 ├── tests/              unit + golden tests
 ├── samples/            small test media checked into the repo
 ├── docs/SPEC.md
@@ -474,7 +495,7 @@ include guards in headers.
 | M0 ✓ | Repo, Makefile, spec | This document is committed |
 | M1 ✓ | `render` for still images through FFmpeg, `ascii` mode, true color, fit terminal | Matches ascii_art output on its test images; opens PNG/JPEG/WebP/AVIF |
 | M2 ✓ | All glyph modes, palettes, color depths, dithering, adjustments | Golden tests for every mode pass |
-| M3 | TUI shell: term, screen diffing, boxes, theme, viewer + info + controls panels, help overlay | Can browse settings live on a still image; resize and `Ctrl+Z` are safe |
+| M3 ✓ | TUI shell: term, screen diffing, boxes, theme, viewer + info + controls panels, help overlay | Can browse settings live on a still image; resize and `Ctrl+Z` are safe |
 | M4 | Animation and video playback, timeline panel, seeking | 1080p30 target met; GIF/APNG/WebP animate correctly |
 | M5 | Options overlay, config file, themes, histogram panel, export | Settings persist; all 5 built-in themes |
 | M6 | Polish: mouse, frame-time graph, edge mode tuning, README with screenshots | Daily-driver quality |
@@ -495,3 +516,6 @@ Resolved 2026-11-18:
 4. **Logo**: the "charcoal smudge" design shown in 6.1.
 5. **Background**: terminals are assumed dark, so ramp modes give bright
    pixels the dense glyphs; `-i` is for light terminals (see 5.3).
+6. **Controls**: a btop-style cursor in the controls panel; panning moved to
+   `Shift`+arrows / `HJKL` (see 6.2, 6.3).
+7. **Viewer fit**: the viewer enlarges small images to fill the panel (6.2).

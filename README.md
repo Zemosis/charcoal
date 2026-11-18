@@ -3,7 +3,8 @@
 A terminal ASCII art viewer for images, animations and video, written in C,
 with a btop-inspired interface.
 
-> Status: M2 done (all glyph modes, colors, dithering). Next: the TUI (M3). See
+> Status: M3 done (interactive viewer for still images). Next: animation and
+> video playback (M4). See
 > [docs/SPEC.md](docs/SPEC.md) for the full specification and milestones.
 
 ## Planned features
@@ -47,7 +48,7 @@ make uninstall                       # same PREFIX as install
 ## Usage
 
 ```bash
-charcoal photo.jpg                       # fit the terminal, half blocks
+charcoal photo.jpg                       # interactive viewer (? for help)
 charcoal render photo.jpg -m ascii       # classic ASCII ramp
 charcoal render photo.jpg -m braille -d floyd
 charcoal render photo.jpg -m quad -c 256 --contrast 1.3
@@ -55,5 +56,8 @@ charcoal render photo.jpg -m ascii -p detailed -c mono -w 80 -i   # light termin
 charcoal export photo.jpg -o photo.ans   # .txt or .ans
 ```
 
-Until the interactive viewer lands (M3), `charcoal <file>` prints once like
-`render`.
+In the viewer, `↑`/`↓` (or `j`/`k`) pick a setting in the controls panel and
+`←`/`→` (or `h`/`l`) change it; `m`, `p`, `c`, `d`, `i`, `f` jump straight to
+mode, palette, color, dither, invert and fit. `+`/`-` zoom, `Shift`+arrows pan,
+`r` resets, `?` shows every key and `q` quits. When stdout is not a terminal,
+`charcoal <file>` prints once like `render`.
