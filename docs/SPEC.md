@@ -28,7 +28,9 @@ theme — plus many more input formats and rendering modes.
 - Windows support (Linux first, macOS best-effort).
 - Image editing or saving back to image formats.
 - Sixel / Kitty / iTerm image protocols. charcoal is about *character* art;
-  those protocols show real pixels and defeat the point.
+  those protocols show real pixels and defeat the point. Reconsidered and
+  kept on 2026-11-18 (a `pixels` mode via Kitty graphics was offered and
+  declined); `quad` or `half` at true color is the closest to the original.
 - Networking (URLs, streams). Local files only.
 
 ---
@@ -48,7 +50,7 @@ If stdout is not a terminal, `charcoal <file>` behaves like `render`.
 
 | Option | Values | Default |
 |---|---|---|
-| `-m, --mode` | `ascii`, `blocks`, `half`, `quad`, `braille`, `edges` | `half` |
+| `-m, --mode` | `ascii`, `half`, `quad`, `braille`, `edges` | `half` |
 | `-p, --palette` | `standard`, `detailed`, `simple`, `blocks`, or a custom string | `standard` |
 | `-c, --color` | `true`, `256`, `16`, `mono` | auto-detect |
 | `-d, --dither` | `none`, `floyd`, `bayer` | `none` |
@@ -133,7 +135,6 @@ for the ramp modes `-i` reproduces ascii_art's output exactly.
 | Mode | Sub-pixels per cell | How it works |
 |---|---|---|
 | `ascii` | 1×1 | Luminance → character from the palette ramp. Color = fg. |
-| `blocks` | 1×1 | `█▓▒░ ` ramp; the shading comes from block density. |
 | `half` | 1×2 | `▀` with fg = top pixel, bg = bottom pixel. Highest fidelity; default. |
 | `quad` | 2×2 | Quadrant blocks `▖▗▘▝▚▞▙▛▜▟…`. Of the 8 ways to split the 4 pixels into 2 groups, pick the one with the least squared color error; fg/bg are the group averages. Mono: lit quadrants are the light pixels. |
 | `braille` | 2×4 | Braille `⠀`–`⣿`. Dots are lit where luminance is light, after dithering (use `floyd` for shading). Dot color = average of the lit pixels. btop-like look. |
@@ -165,7 +166,7 @@ otherwise `TERM` containing `256color` → 256, otherwise 16.
 
 ### 5.6 Dithering
 
-Dithering applies to glyph choice (the ramp in `ascii`/`blocks`/`edges`, and
+Dithering applies to glyph choice (the ramp in `ascii`/`edges`, and
 which half/quadrant/dot is lit in mono `half`, `quad` and in `braille`) and to
 256/16 color reduction. `quad` and `braille` colors are already per-cell
 averages, so their colors are not dithered.
@@ -519,3 +520,7 @@ Resolved 2026-11-18:
 6. **Controls**: a btop-style cursor in the controls panel; panning moved to
    `Shift`+arrows / `HJKL` (see 6.2, 6.3).
 7. **Viewer fit**: the viewer enlarges small images to fill the panel (6.2).
+8. **No `blocks` mode**: it was `ascii` with the block palette forced, so it
+   was removed; `-m ascii -p blocks` gives the same output and `-m blocks`
+   says so.
+9. **No pixel modes**: image protocols stay a non-goal (see 2).

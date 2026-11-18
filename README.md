@@ -11,7 +11,8 @@ with a btop-inspired interface.
 
 - Opens almost any image, animated image or video file through FFmpeg
   (PNG, JPEG, WebP, AVIF, GIF, APNG, MP4, MKV, WebM, ...)
-- Glyph modes: `ascii`, `blocks`, `half`, `quad`, `braille`, `edges`
+- Glyph modes: `ascii`, `half`, `quad`, `braille`, `edges`; palettes
+  `standard`, `detailed`, `simple`, `blocks` or your own
 - True color, 256, 16 color and mono output, with optional dithering
 - Full-screen TUI with rounded panels, braille graphs, themes and live controls
 - Smooth animation and video playback with seeking
