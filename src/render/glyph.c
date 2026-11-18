@@ -83,8 +83,7 @@ static uint32_t pack_rgb(const uint8_t *p, int invert) {
 static void glyph_ascii(const uint8_t *rgb, const Planes *pl,
                         const RenderOpts *o, Grid *g) {
     uint32_t ramp[MAX_RAMP];
-    const char *palette = o->mode == MODE_BLOCKS ? PALETTE_BLOCKS : o->palette;
-    int n = ramp_decode(palette, ramp);
+    int n = ramp_decode(o->palette, ramp);
     if (n == 0) {
         ramp[0] = '#';
         n = 1;
@@ -356,8 +355,7 @@ int glyph_render(const uint8_t *rgb, const RenderOpts *o, Grid *g) {
     // Ramps list dense glyphs first and terminals are assumed dark, so the
     // ramp modes look up bright pixels as "dense"; invert undoes it for light
     // terminals (and then matches ascii_art exactly)
-    int ramp_mode = o->mode == MODE_ASCII || o->mode == MODE_BLOCKS ||
-                    o->mode == MODE_EDGES;
+    int ramp_mode = o->mode == MODE_ASCII || o->mode == MODE_EDGES;
     int flip = ramp_mode ? !o->invert : o->invert;
     for (size_t i = 0; i < n; i++) {
         uint8_t l = rgb_luma(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
@@ -366,7 +364,6 @@ int glyph_render(const uint8_t *rgb, const RenderOpts *o, Grid *g) {
 
     switch (o->mode) {
     case MODE_ASCII:
-    case MODE_BLOCKS:
         glyph_ascii(rgb, &pl, o, g);
         break;
     case MODE_EDGES:

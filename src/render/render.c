@@ -11,7 +11,7 @@ const char PALETTE_SIMPLE[] = "#*+:. ";
 const char PALETTE_BLOCKS[] = "█▓▒░ ";
 
 static const char *MODE_NAMES[MODE_COUNT] = {
-    "ascii", "blocks", "half", "quad", "braille", "edges",
+    "ascii", "half", "quad", "braille", "edges",
 };
 
 static const char *COLOR_NAMES[COLOR_COUNT] = {

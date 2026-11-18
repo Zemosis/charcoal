@@ -16,7 +16,7 @@ photo_ascii_compat   | samples/photo.png -m ascii -p detailed -c mono -w 51 -i
 photo_ascii_standard | samples/photo.png -m ascii -c mono -w 60
 photo_ascii_floyd    | samples/photo.png -m ascii -c mono -w 60 -d floyd
 photo_ascii_bayer    | samples/photo.png -m ascii -c mono -w 60 -d bayer
-photo_blocks         | samples/photo.png -m blocks -c mono -w 60
+photo_blocks         | samples/photo.png -m ascii -p blocks -c mono -w 60
 photo_half_mono      | samples/photo.png -m half -c mono -w 60
 photo_half_floyd     | samples/photo.png -m half -c mono -w 60 -d floyd
 photo_quad_mono      | samples/photo.png -m quad -c mono -w 60 -d floyd

@@ -98,8 +98,9 @@ void test_glyph(void) {
     CHECK_INT(g->cells[2].ch, '=');     // 128 * 10 / 256 = 5
     CHECK(g->cells[1].fg == CELL_COLOR_DEFAULT);
 
-    // blocks mode uses the block ramp whatever the palette is
-    o.mode = MODE_BLOCKS;
+    // The block palette shades with block density
+    o.mode = MODE_ASCII;
+    o.palette = PALETTE_BLOCKS;
     o.invert = 0;
     glyph_render(px, &o, g);
     CHECK_INT(g->cells[1].ch, 0x2588);

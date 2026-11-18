@@ -18,7 +18,6 @@
 
 typedef enum GlyphMode {
     MODE_ASCII,
-    MODE_BLOCKS,
     MODE_HALF,
     MODE_QUAD,
     MODE_BRAILLE,

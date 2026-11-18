@@ -55,8 +55,7 @@ static void usage(FILE *out) {
         "  charcoal export <file> -o <out> [options] write .txt or .ans\n"
         "\n"
         "Options:\n"
-        "  -m, --mode MODE        half (default), ascii, blocks, quad, braille,\n"
-        "                         edges\n"
+        "  -m, --mode MODE        half (default), ascii, quad, braille, edges\n"
         "  -p, --palette NAME     standard, detailed, simple, blocks,\n"
         "                         or your own ramp, darkest first\n"
         "  -c, --color DEPTH      auto (default), true, 256, 16, mono\n"
@@ -164,8 +163,13 @@ static int parse_args(int argc, char **argv, Args *a) {
             a->opts.invert = 1;
         } else if ((v = option_value(argc, argv, &i, arg, "-m", "--mode"))) {
             int m = glyph_mode_from_name(v);
+            if (m < 0 && strcmp(v, "blocks") == 0) {
+                fprintf(stderr, "charcoal: blocks is a palette now: "
+                        "-m ascii -p blocks\n");
+                return -1;
+            }
             if (m < 0) {
-                fprintf(stderr, "charcoal: unknown mode '%s' (ascii, blocks, half, quad, "
+                fprintf(stderr, "charcoal: unknown mode '%s' (ascii, half, quad, "
                         "braille, edges)\n", v);
                 return -1;
             }
