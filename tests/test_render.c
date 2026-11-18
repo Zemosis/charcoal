@@ -75,33 +75,35 @@ void test_glyph(void) {
     CHECK(glyph_mode_from_name("nope") == -1);
     CHECK(palette_from_name("detailed") == PALETTE_DETAILED);
 
-    // ascii: black is the densest char, white the sparsest
+    // ascii assumes a dark terminal: white is the densest char
     o.mode = MODE_ASCII;
     uint8_t g1[] = {0, 255, 128};
     uint8_t px[3 * 3];
     fill_gray(px, g1, 3);
     Grid *g = grid_new(3, 1);
-    glyph_render(px, &o, g);
-    CHECK_INT(g->cells[0].ch, '@');
-    CHECK_INT(g->cells[1].ch, ' ');
-    CHECK_INT(g->cells[2].ch, '=');     // 128 * 10 / 256 = 5
+    CHECK_INT(glyph_render(px, &o, g), 0);
+    CHECK_INT(g->cells[0].ch, ' ');
+    CHECK_INT(g->cells[1].ch, '@');
+    CHECK_INT(g->cells[2].ch, '+');     // (255 - 128) * 10 / 256 = 4
     CHECK_INT(g->cells[0].fg, 0x000000);
     CHECK_INT(g->cells[1].fg, 0xFFFFFF);
     CHECK(g->cells[0].bg == CELL_COLOR_DEFAULT);
 
-    // invert and mono
+    // invert (light terminals) matches ascii_art: black is dense
     o.invert = 1;
     o.color = COLOR_MONO;
     glyph_render(px, &o, g);
-    CHECK_INT(g->cells[0].ch, ' ');
-    CHECK_INT(g->cells[1].ch, '@');
+    CHECK_INT(g->cells[0].ch, '@');
+    CHECK_INT(g->cells[1].ch, ' ');
+    CHECK_INT(g->cells[2].ch, '=');     // 128 * 10 / 256 = 5
     CHECK(g->cells[1].fg == CELL_COLOR_DEFAULT);
 
     // blocks mode uses the block ramp whatever the palette is
     o.mode = MODE_BLOCKS;
     o.invert = 0;
     glyph_render(px, &o, g);
-    CHECK_INT(g->cells[0].ch, 0x2588);
+    CHECK_INT(g->cells[1].ch, 0x2588);
+    CHECK_INT(g->cells[0].ch, ' ');
     grid_free(g);
 
     // half: top pixel is fg, bottom is bg

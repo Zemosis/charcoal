@@ -1,12 +1,12 @@
-ooOoooooOOOoOOOOOOo@@@@@@@@@@@@@@@@@@@OO
-ooOoOoooOoOoOOOOO..@@@@@@@@@@@@@@@@@@@OO
-ooOOooooOoOoOOOo. ..o@@@@@@@@@@@@@@@@OOO
-ooooooooooOoOOO..ooOoo@@@@@@@@@@@@@@@@OO
-oooooooooOOoOOOooOOO@O@@@@@@@@@@@@@@@@@O
-ooooOoooOOOOOOOoooOOOO@@@@@@@@@@@@@@@@@O
-ooooooooooOoOoo..oOOOOOOOOO@OOOooooooooo
-..o.o..oooooo....oOoooOOOOO@@@@Ooooooooo
-OOOOOOOOooOOoo.oooOooOOOoOO@OO@@@Ooooooo
-ooooooooooOo...oooOoooOOoO@O.oOO@Ooooooo
-........oOOo ...oooo..ooooO .oOOOOO.....
-.........oooo..  .....ooooO  .oOOOO.....
+oo.ooooo...o......o                   ..
+oo.o.ooo.o.o.....OO                   ..
+oo..oooo.o.o...oO@OOo                  .
+ooooooooo..o...OOoo.oo                 .
+ooooooooo..o...oo... .                 .
+oooo.ooo.......ooo....                  
+oooooooooo.o.ooOOo......... ...ooooooooo
+OOoOoOOooooooOOOOo.ooo.....    .oooooooo
+........oo..ooOooo.oo...... ..   .oooooo
+oooooooooo.oOOOooo.ooo..o. .Oo.. .oooooo
+OOOOOOOOo..o@OOOooooOOoooo.@Oo.....OOOOO
+OOOOOOOOOooooOO@@oOOOOoooo.@@Oo....OOOOO

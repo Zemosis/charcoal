@@ -47,5 +47,6 @@ void test_buf(void);
 void test_resize(void);
 void test_glyph(void);
 void test_export(void);
+void test_color(void);
 
 #endif // CHARCOAL_TEST_H
