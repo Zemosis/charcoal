@@ -3,7 +3,7 @@
 A terminal ASCII art viewer for images, animations and video, written in C,
 with a btop-inspired interface.
 
-> Status: M1 in progress (`render` for still images). See
+> Status: M2 done (all glyph modes, colors, dithering). Next: the TUI (M3). See
 > [docs/SPEC.md](docs/SPEC.md) for the full specification and milestones.
 
 ## Planned features
@@ -49,7 +49,9 @@ make uninstall                       # same PREFIX as install
 ```bash
 charcoal photo.jpg                       # fit the terminal, half blocks
 charcoal render photo.jpg -m ascii       # classic ASCII ramp
-charcoal render photo.jpg -m ascii -p detailed -c mono -w 80
+charcoal render photo.jpg -m braille -d floyd
+charcoal render photo.jpg -m quad -c 256 --contrast 1.3
+charcoal render photo.jpg -m ascii -p detailed -c mono -w 80 -i   # light terminal
 charcoal export photo.jpg -o photo.ans   # .txt or .ans
 ```
 

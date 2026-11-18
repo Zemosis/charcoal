@@ -55,7 +55,7 @@ If stdout is not a terminal, `charcoal <file>` behaves like `render`.
 | `-w, --width N` | output width in characters | fit terminal |
 | `-H, --height N` | output height in characters | fit terminal |
 | `--fit` | `contain`, `cover`, `stretch` | `contain` |
-| `-i, --invert` | flip brightness | off |
+| `-i, --invert` | flip brightness, for light terminal backgrounds | off |
 | `--brightness`, `--contrast`, `--gamma`, `--saturation` | numbers | neutral |
 | `--theme NAME` | theme name | `gruvbox_dark` |
 | `--frame N` / `--time T` | `render`/`export` of one video frame | first frame |
@@ -97,8 +97,8 @@ clear message (in the TUI as a red box, otherwise on stderr) with exit code 1.
 ## 5. Rendering pipeline
 
 ```
-decode ─► RGB24 frame ─► resize ─► adjust ─► glyph map ─► cell grid ─► screen
-          (swscale)      (area avg) (b/c/γ/s) (+ dither)   (fg, bg, ch)
+decode ─► RGB24 frame ─► resize ─► adjust ─► glyph map ─► quantize ─► cells ─► screen
+          (swscale)      (area avg) (s, b/c/γ) (+ dither)  (256/16)
 ```
 
 ### 5.1 Cell aspect ratio
@@ -111,15 +111,22 @@ otherwise it assumes 1:2. This replaces ascii_art's hard-coded `* 2`.
 
 Area averaging (box filter) is used when shrinking, which is the ascii_art
 approach, kept because it is fast and avoids aliasing. Partial edge blocks are
-averaged over the pixels they cover. Each glyph mode sets how many sub-pixels a
+averaged over the pixels they cover. Growing uses nearest neighbor so pixel
+art stays crisp. Decoders that can shrink while decoding (JPEG's `lowres`) are
+asked for the smallest size that still covers the output, which halves the
+time for large photos. Each glyph mode sets how many sub-pixels a
 cell holds (see below), so the image is resized to
 `cols × sub_w` by `rows × sub_h` pixels.
 
 ### 5.3 Adjustments
 
-Brightness, contrast, gamma and saturation are applied per pixel through a
-256-entry lookup table that is rebuilt only when a value changes. Invert flips
-the luminance before glyph mapping, as in ascii_art.
+Saturation is applied first (each channel pushed away from the pixel's gray),
+then brightness, contrast and gamma through one 256-entry lookup table. They
+run on the resized pixels, so their cost does not depend on the image size.
+
+Terminals are assumed to have a dark background (decided 2026-11-18): bright
+pixels get dense glyphs and lit dots. Invert flips this for light terminals;
+for the ramp modes `-i` reproduces ascii_art's output exactly.
 
 ### 5.4 Glyph modes
 
@@ -128,11 +135,11 @@ the luminance before glyph mapping, as in ascii_art.
 | `ascii` | 1×1 | Luminance → character from the palette ramp. Color = fg. |
 | `blocks` | 1×1 | `█▓▒░ ` ramp; the shading comes from block density. |
 | `half` | 1×2 | `▀` with fg = top pixel, bg = bottom pixel. Highest fidelity; default. |
-| `quad` | 2×2 | Quadrant blocks `▖▗▘▝▚▞▙▛▜▟…`. Pick the best 2-color split of the 4 pixels. |
-| `braille` | 2×4 | Braille `⠀`–`⣿`. Dots on where luminance > local threshold. btop-like look. |
-| `edges` | 1×1 | Sobel filter. Strong edges use `/ \ \| - _` by gradient angle; the rest falls back to `ascii`. |
+| `quad` | 2×2 | Quadrant blocks `▖▗▘▝▚▞▙▛▜▟…`. Of the 8 ways to split the 4 pixels into 2 groups, pick the one with the least squared color error; fg/bg are the group averages. Mono: lit quadrants are the light pixels. |
+| `braille` | 2×4 | Braille `⠀`–`⣿`. Dots are lit where luminance is light, after dithering (use `floyd` for shading). Dot color = average of the lit pixels. btop-like look. |
+| `edges` | 1×1 | Sobel filter (rows scaled by the cell aspect). Strong edges use `/ \ \| -` by gradient angle; the rest falls back to `ascii`. |
 
-Palettes (dark → light, as in ascii_art):
+Palettes are listed densest first, as in ascii_art:
 
 - `standard`: `@%#*+=-:. ` (10 levels)
 - `detailed`: the 70-level Paul Bourke ramp from ascii_art
@@ -143,19 +150,28 @@ Palettes (dark → light, as in ascii_art):
 ### 5.5 Color
 
 - **true**: 24-bit `38;2;r;g;b` / `48;2;r;g;b`
-- **256**: nearest xterm-256 color (6×6×6 cube + 24 grays)
-- **16**: nearest of the theme's 16 ANSI colors
+- **256**: nearest xterm-256 color (6×6×6 cube + 24 grays; indices 0–15 are
+  skipped because terminals theme them), written as `38;5;n`
+- **16**: nearest of the 16 ANSI colors, written as `30–37` / `90–97`. Until
+  themes (M5) or a terminal query (OSC 4) supply the real values, xterm's
+  defaults are used.
 - **mono**: no color; the glyph alone carries brightness
 
-Auto-detect: `COLORTERM=truecolor|24bit` → true, otherwise `TERM` containing
-`256color` → 256, otherwise 16.
+"Nearest" is measured in OKLab, where distance follows how different two
+colors look; plain RGB distance picked visibly wrong hues for pale colors.
+
+Auto-detect: `NO_COLOR` set → mono, `COLORTERM=truecolor|24bit` → true,
+otherwise `TERM` containing `256color` → 256, otherwise 16.
 
 ### 5.6 Dithering
 
-Dithering applies to the `ascii`, `blocks` and reduced color modes:
+Dithering applies to glyph choice (the ramp in `ascii`/`blocks`/`edges`, and
+which half/quadrant/dot is lit in mono `half`, `quad` and in `braille`) and to
+256/16 color reduction. `quad` and `braille` colors are already per-cell
+averages, so their colors are not dithered.
 
-- `floyd`: Floyd–Steinberg error diffusion on luminance (and on color when
-  quantizing to 256/16)
+- `none`: equal-width bins, as ascii_art picked characters
+- `floyd`: Floyd–Steinberg error diffusion (per channel for color)
 - `bayer`: 4×4 ordered dithering; stable across video frames (no shimmer)
 
 ---
@@ -427,7 +443,9 @@ include guards in headers.
 
 ## 12. Performance targets
 
-- Still image: under 50 ms from launch to first frame for a 12 MP JPEG.
+- Still image: under 50 ms to decode and render a 12 MP JPEG. This excludes
+  process startup: Fedora's FFmpeg pulls in ~240 shared libraries, which costs
+  ~50 ms before `main` runs.
 - Settings change on a still: re-render under 16 ms at 200×60 cells.
 - Video: 1080p30 H.264 played at full rate into a 200×60 viewer on a laptop
   CPU, with no dropped frames in `half` mode.
@@ -453,9 +471,9 @@ include guards in headers.
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | Repo, Makefile, spec | This document is committed |
-| M1 | `render` for still images through FFmpeg, `ascii` mode, true color, fit terminal | Matches ascii_art output on its test images; opens PNG/JPEG/WebP/AVIF |
-| M2 | All glyph modes, palettes, color depths, dithering, adjustments | Golden tests for every mode pass |
+| M0 ✓ | Repo, Makefile, spec | This document is committed |
+| M1 ✓ | `render` for still images through FFmpeg, `ascii` mode, true color, fit terminal | Matches ascii_art output on its test images; opens PNG/JPEG/WebP/AVIF |
+| M2 ✓ | All glyph modes, palettes, color depths, dithering, adjustments | Golden tests for every mode pass |
 | M3 | TUI shell: term, screen diffing, boxes, theme, viewer + info + controls panels, help overlay | Can browse settings live on a still image; resize and `Ctrl+Z` are safe |
 | M4 | Animation and video playback, timeline panel, seeking | 1080p30 target met; GIF/APNG/WebP animate correctly |
 | M5 | Options overlay, config file, themes, histogram panel, export | Settings persist; all 5 built-in themes |
@@ -475,3 +493,5 @@ Resolved 2026-11-18:
 3. **Default mode**: `half`, since it is the closest to the real image.
    `ascii` stays one keypress away (`m`).
 4. **Logo**: the "charcoal smudge" design shown in 6.1.
+5. **Background**: terminals are assumed dark, so ramp modes give bright
+   pixels the dense glyphs; `-i` is for light terminals (see 5.3).
