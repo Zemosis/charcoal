@@ -312,6 +312,7 @@ Mouse support (click panel buttons, scroll to zoom) is planned for M6.
   terminal supports it, to avoid tearing during video.
 - One `write()` per frame from a growable output buffer, never `printf` per
   character.
+- Flow control with `ESC [5n` status requests during redraws (decision 14).
 
 ### 6.5 Themes
 
@@ -570,3 +571,8 @@ Resolved 2026-11-18:
     per channel are not resent while playing (`PLAY_TOLERANCE`); paused
     frames are exact. This halved the output (3.2 → 1.4 MB/s for 640×360
     video at 210×52 cells) that tmux and the terminal have to process.
+14. **Flow control**: after each frame, charcoal sends `ESC [5n` and sends
+    nothing new until the terminal answers (or 250 ms pass). Frames that come
+    due meanwhile are skipped, so a slow terminal shows fewer frames but never
+    falls behind. The info panel's `output` row shows frames per second and
+    the round trip; inside tmux, tmux answers, so it covers charcoal → tmux.
