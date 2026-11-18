@@ -172,9 +172,16 @@ Dithering applies to the `ascii`, `blocks` and reduced color modes:
 - Braille graphs for the histogram and frame-time panels.
 - Labels in the dim foreground color, values in bright foreground, hotkeys in
   the accent color, as in the btop screenshots.
-- Help overlay (`?`) with a large block-letter **CHARCOAL** logo (our own
-  design drawn with `█▀▄` blocks and a shadow) above a key/description table
-  in a centered box.
+- Help overlay (`?`) with a **CHARCOAL** logo above a key/description table
+  in a centered box. The logo is our own "charcoal smudge" design: letters
+  shaded `▓` → `▒` → `░` from top to bottom so they fade out like a charcoal
+  stroke, with no outline or drop shadow (unlike btop's logo):
+
+  ```
+  ▓▓▓▓ ▓  ▓ ▓▓▓▓ ▓▓▓  ▓▓▓▓ ▓▓▓▓ ▓▓▓▓ ▓
+  ▒    ▒▒▒▒ ▒▒▒▒ ▒▒▒  ▒    ▒  ▒ ▒▒▒▒ ▒
+  ░░░░ ░  ░ ░  ░ ░  ░ ░░░░ ░░░░ ░  ░ ░░░░
+  ```
 - Options overlay (`o`) with tabs (`general`, `render`, `color`, `playback`),
   the setting list on the left and a description on the right, the selected
   row highlighted with a solid accent bar, and `←`/`→` to change values.
@@ -223,7 +230,7 @@ Dithering applies to the `ascii`, `blocks` and reduced color modes:
 | `d` | Cycle dithering |
 | `i` | Toggle invert |
 | `f` | Cycle fit (contain / cover / stretch) |
-| `+` / `-` | Zoom in / out |
+| `+` / `-` | Zoom in / out (past 1:1 with nearest-neighbor upscaling) |
 | arrows, `h j k l` (vim keys option) | Pan when zoomed |
 | `r` | Reset zoom, pan and adjustments |
 | `Space` | Play / pause |
@@ -451,11 +458,15 @@ include guards in headers.
 
 ---
 
-## 15. Open questions
+## 15. Decisions
 
-1. Should `charcoal <directory>` open a file browser panel to flip through
-   images with `n`/`p`? (Proposed for after M6.)
-2. Should zooming go beyond 1 pixel per cell (pixel-art upscaling), or stop at
-   1:1?
-3. Should `half` mode be the default, or `ascii`, since `ascii` is the
-   project's namesake?
+Resolved 2026-11-18:
+
+1. **Directory browser**: yes, but after M6. `charcoal <directory>` will open
+   a file browser panel to flip through images with `n`/`p`. Until then,
+   passing a directory is an error.
+2. **Zoom**: zooming goes past 1:1. Beyond one source pixel per sub-pixel, the
+   image is upscaled with nearest-neighbor so pixel art stays crisp.
+3. **Default mode**: `half`, since it is the closest to the real image.
+   `ascii` stays one keypress away (`m`).
+4. **Logo**: the "charcoal smudge" design shown in 6.1.
