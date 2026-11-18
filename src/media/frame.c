@@ -13,6 +13,8 @@ Frame *frame_new(int width, int height) {
     f->width = width;
     f->height = height;
     f->pts_us = 0;
+    f->duration_us = 0;
+    f->play_us = 0;
     f->rgb = malloc((size_t)width * (size_t)height * 3);
     if (!f->rgb) {
         free(f);
