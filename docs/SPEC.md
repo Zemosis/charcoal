@@ -60,8 +60,8 @@ If stdout is not a terminal, `charcoal <file>` behaves like `render`.
 | `-i, --invert` | flip brightness, for light terminal backgrounds | off |
 | `--brightness`, `--contrast`, `--gamma`, `--saturation` | numbers | neutral |
 | `--theme NAME` | theme name | `gruvbox_dark` |
-| `--frame N` / `--time T` | `render`/`export` of one video frame | first frame |
-| `--loop` / `--no-loop` | animation looping | loop |
+| `--frame N` / `-t, --time T` | `render`/`export` of one frame: the N-th (from 0), or the one on screen at T seconds; `--frame` wins; past the end gives the last frame | first frame |
+| `--loop` / `--no-loop` | animation and video looping in the viewer | loop |
 
 If neither `--width` nor `--height` is given, the output fits the terminal
 (carrying over the fit logic from ascii_art), or 100 columns when there is
@@ -87,9 +87,24 @@ On startup, charcoal sorts the input into one of three kinds:
 
 - **still**: one frame, rendered once and re-rendered only when settings or
   the terminal size change
-- **animated**: a few frames with per-frame delays; all frames are decoded and
-  cached up front if they fit in a memory budget (default 256 MiB)
-- **video**: decoded as a stream on a background thread
+- **animated**: GIF / APNG / WebP with more than one frame
+- **video**: anything else with more than one frame
+
+The kind is known after the first frame: if the stream has another packet
+(or the decoder holds another frame), it moves. Animated and video files both
+play through the decoder thread (section 7); animations are small, so they are
+streamed and looped rather than cached up front as first planned.
+
+WebP goes through libwebp (`libwebpdemux`'s `WebPAnimDecoder`) when charcoal
+is built with it, because FFmpeg's `webp` decoder cannot decode animation
+(Fedora's FFmpeg 8.1 included). Each canvas is wrapped in an RGBA `AVFrame`,
+so scaling, alpha and timing share the FFmpeg path. libwebp is optional: the
+Makefile uses it when `pkg-config` finds `libwebpdemux`; without it, still
+WebP still works through FFmpeg and animated WebP reports that charcoal needs
+to be built with `libwebp-devel`. `charcoal --version` lists the libraries.
+
+FFmpeg's own log output is turned off (`AV_LOG_QUIET`): it would draw over the
+viewer, and charcoal reports errors itself.
 
 Errors such as an unsupported codec, a corrupt file or a missing file show a
 clear message (in the TUI as a red box, otherwise on stderr) with exit code 1.
@@ -276,7 +291,8 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 | `[` / `]` | Seek −5 s / +5 s |
 | `{` / `}` | Seek −30 s / +30 s |
 | `<` / `>` | Playback speed down / up |
-| loop key: TBD in M4 (`L` is vim pan right) | Toggle loop |
+| `R` | Toggle repeat (loop); `L` is vim pan right |
+| `Home` | Back to the start |
 | `e` | Export the current frame (prompts for a filename) |
 | `Ctrl+R` | Redraw; also reloads config and themes from M5 |
 
@@ -289,7 +305,9 @@ Mouse support (click panel buttons, scroll to zoom) is planned for M6.
   via `atexit` + signal handlers) and on `SIGTSTP`/`SIGCONT` (`Ctrl+Z`).
 - `SIGWINCH` triggers a re-layout and re-render.
 - Double-buffered cell grid: each frame is drawn into a back buffer, and only
-  changed cells are written. Runs of the same color skip repeated escape codes.
+  changed cells are written. Escape codes set only what differs from the
+  previous cell (fg, bg or attributes), and skips use relative cursor moves.
+  During playback, near-identical colors are not resent (decision 13).
 - Synchronized output (DEC private mode 2026) wraps each flush when the
   terminal supports it, to avoid tearing during video.
 - One `write()` per frame from a growable output buffer, never `printf` per
@@ -322,19 +340,34 @@ UI chrome; the art keeps the image's own colors.
 
 ## 7. Playback
 
-- A decoder thread fills a ring buffer (default 8 frames) of frames already
-  resized to the current target size. A size change flushes the ring.
-- The main loop shows each frame when the clock reaches its PTS. If it falls
-  more than one frame behind, it drops frames instead of slowing down.
-- Seeking uses `av_seek_frame` on the nearest keyframe and then decodes up to
-  the target time.
-- Animated GIF/APNG/WebP use the per-frame delays from the file. A delay of
-  0 is treated as 100 ms, as browsers do.
+- A decoder thread (`media/player.c`) fills a queue of 8 frames, already
+  scaled by swscale (`SWS_AREA`) to the size the viewer asks for: just enough
+  pixels for the visible part at the current mode, zoom and fit, never more
+  than the source. Asking for a new size drops queued frames of the old size;
+  while paused, the frame on screen is fetched again at the new size.
+- The UI thread sleeps in `poll()` on the keyboard, signals and a wake pipe
+  the decoder writes to, with a timeout until the next frame is due. Each
+  frame has a playback time; when several are due at once, only the newest
+  is shown and the rest count as dropped (shown in the info panel).
+- Playback time keeps counting up across loops (each loop adds the length of
+  the last), so the clock never jumps back.
+- Seeking uses `av_seek_frame` to the keyframe before the target and decodes
+  forward, dropping frames that end before it. Animated images always restart
+  from the first frame (their frames build on each other). Seeking past the
+  end shows the last frame.
+- Animated GIF/APNG/WebP use the delays from the file, adding them up for
+  timestamps. Delays under 20 ms are shown as 100 ms, as browsers do.
+- Decoders use FFmpeg's own threads (`thread_count = 0`).
 - The frame-time braille graph in the timeline panel shows render time against
-  the frame budget (green / yellow / red, like btop's CPU graph).
+  the frame budget (green / yellow / red, like btop's CPU graph). Planned for
+  M6.
 
 Threads are `pthread`s. The UI thread owns all terminal I/O, and the decoder
-thread never writes to the terminal.
+thread never writes to the terminal. Checked with ThreadSanitizer (FFmpeg's
+internal threading suppressed, as FFmpeg is not instrumented).
+
+Measured (release, 200×56 cells, `half`): 1080p30 H.264 (openh264) plays with
+0 dropped frames at ~90% of one core; 1080p30 VP9 at ~17%.
 
 ---
 
@@ -383,6 +416,7 @@ charcoal/
 │   ├── config.c        config + theme file parsing
 │   ├── media/
 │   │   ├── decoder.c   FFmpeg open/probe/decode/seek, kind detection
+│   │   ├── media_internal.h  FFmpeg types shared by decoder.c and player.c
 │   │   ├── frame.c     RGB frame type, alloc/free
 │   │   └── player.c    decoder thread, ring buffer, clock
 │   ├── render/
@@ -399,7 +433,7 @@ charcoal/
 │       ├── theme.c     theme tables, built-ins
 │       ├── layout.c    panel placement, resize
 │       └── views/      viewer.c, panels.c (info, controls, status),
-│                       help.c; later histogram, timeline, options
+│                       timeline.c, help.c; later histogram, options
 ├── tests/              unit + golden tests
 ├── samples/            small test media checked into the repo
 ├── docs/SPEC.md
@@ -440,6 +474,8 @@ so it can be unit tested and used by `render`/`export` without the TUI.
 - C11 (`-std=c11 -D_POSIX_C_SOURCE=200809L`), GCC or Clang
 - FFmpeg development libraries via `pkg-config`: `libavformat`, `libavcodec`,
   `libavutil`, `libswscale`
+- Optional: `libwebpdemux` (`libwebp-devel` on Fedora, `libwebp-dev` on
+  Debian/Ubuntu) for animated WebP
   - Fedora: `sudo dnf install ffmpeg-free-devel` (or `ffmpeg-devel` from
     RPM Fusion for more codecs)
   - Debian/Ubuntu: `sudo apt install libavformat-dev libavcodec-dev libswscale-dev`
@@ -497,7 +533,7 @@ include guards in headers.
 | M1 ✓ | `render` for still images through FFmpeg, `ascii` mode, true color, fit terminal | Matches ascii_art output on its test images; opens PNG/JPEG/WebP/AVIF |
 | M2 ✓ | All glyph modes, palettes, color depths, dithering, adjustments | Golden tests for every mode pass |
 | M3 ✓ | TUI shell: term, screen diffing, boxes, theme, viewer + info + controls panels, help overlay | Can browse settings live on a still image; resize and `Ctrl+Z` are safe |
-| M4 | Animation and video playback, timeline panel, seeking | 1080p30 target met; GIF/APNG/WebP animate correctly |
+| M4 ✓ | Animation and video playback, timeline panel, seeking | 1080p30 target met; GIF/APNG/WebP animate correctly (WebP with libwebp, see 4) |
 | M5 | Options overlay, config file, themes, histogram panel, export | Settings persist; all 5 built-in themes |
 | M6 | Polish: mouse, frame-time graph, edge mode tuning, README with screenshots | Daily-driver quality |
 
@@ -524,3 +560,13 @@ Resolved 2026-11-18:
    was removed; `-m ascii -p blocks` gives the same output and `-m blocks`
    says so.
 9. **No pixel modes**: image protocols stay a non-goal (see 2).
+10. **Loop key**: `R` (repeat), since vim keys use `L` to pan.
+11. **Animations are streamed**, not cached up front: same code path as
+    video, small enough to decode on the fly (see 4, 7).
+12. **Animated WebP through libwebp** (optional dependency, see 4). First
+    left to FFmpeg, then changed the same day so it plays today.
+13. **Lighter output during playback**: only changed colors are sent, the
+    cursor moves relatively, and cells whose colors moved by at most 8 steps
+    per channel are not resent while playing (`PLAY_TOLERANCE`); paused
+    frames are exact. This halved the output (3.2 → 1.4 MB/s for 640×360
+    video at 210×52 cells) that tmux and the terminal have to process.

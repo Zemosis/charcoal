@@ -3,8 +3,8 @@
 A terminal ASCII art viewer for images, animations and video, written in C,
 with a btop-inspired interface.
 
-> Status: M3 done (interactive viewer for still images). Next: animation and
-> video playback (M4). See
+> Status: M4 done (animation and video playback). Next: options overlay,
+> config file, themes, histogram, HTML export (M5). See
 > [docs/SPEC.md](docs/SPEC.md) for the full specification and milestones.
 
 ## Planned features
@@ -21,14 +21,15 @@ with a btop-inspired interface.
 ## Building
 
 Requires a C11 compiler and the FFmpeg development libraries
-(`libavformat`, `libavcodec`, `libavutil`, `libswscale`). Debug builds use
-ASan and UBSan when their runtimes are installed.
+(`libavformat`, `libavcodec`, `libavutil`, `libswscale`). libwebp is optional
+and adds animated WebP. Debug builds use ASan and UBSan when their runtimes
+are installed.
 
 ```bash
 # Fedora
-sudo dnf install ffmpeg-free-devel libasan libubsan
+sudo dnf install ffmpeg-free-devel libwebp-devel libasan libubsan
 # Debian/Ubuntu
-sudo apt install libavformat-dev libavcodec-dev libswscale-dev
+sudo apt install libavformat-dev libavcodec-dev libswscale-dev libwebp-dev
 ```
 
 ```bash
@@ -54,11 +55,16 @@ charcoal render photo.jpg -m ascii       # classic ASCII ramp
 charcoal render photo.jpg -m braille -d floyd
 charcoal render photo.jpg -m quad -c 256 --contrast 1.3
 charcoal render photo.jpg -m ascii -p detailed -c mono -w 80 -i   # light terminal
+charcoal clip.mp4                        # plays, with a timeline
+charcoal render clip.mp4 -t 12.5         # the frame at 12.5 s
+charcoal render anim.gif --frame 3       # the 4th frame
 charcoal export photo.jpg -o photo.ans   # .txt or .ans
 ```
 
 In the viewer, `↑`/`↓` (or `j`/`k`) pick a setting in the controls panel and
 `←`/`→` (or `h`/`l`) change it; `m`, `p`, `c`, `d`, `i`, `f` jump straight to
 mode, palette, color, dither, invert and fit. `+`/`-` zoom, `Shift`+arrows pan,
-`r` resets, `?` shows every key and `q` quits. When stdout is not a terminal,
+`r` resets, `?` shows every key and `q` quits. For animations and video:
+`Space` plays and pauses, `,`/`.` step a frame, `[`/`]` and `{`/`}` seek 5
+and 30 seconds, `<`/`>` change speed, `R` toggles repeat and `Home` restarts. When stdout is not a terminal,
 `charcoal <file>` prints once like `render`.
