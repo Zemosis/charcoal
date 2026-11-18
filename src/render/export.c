@@ -9,6 +9,21 @@ static void sgr_color(Buf *out, int is_bg, uint32_t color) {
         buf_puts(out, is_bg ? "\033[49m" : "\033[39m");
         return;
     }
+    if (color & CELL_COLOR_INDEX) {
+        // 16 colors use the classic codes, which every terminal knows
+        unsigned idx = color & 0xFF;
+        buf_puts(out, "\033[");
+        if (idx < 8) {
+            buf_putu(out, (is_bg ? 40 : 30) + idx);
+        } else if (idx < 16) {
+            buf_putu(out, (is_bg ? 100 : 90) + idx - 8);
+        } else {
+            buf_puts(out, is_bg ? "48;5;" : "38;5;");
+            buf_putu(out, idx);
+        }
+        buf_putc(out, 'm');
+        return;
+    }
     buf_puts(out, is_bg ? "\033[48;2;" : "\033[38;2;");
     buf_putu(out, (color >> 16) & 0xFF);
     buf_putc(out, ';');
