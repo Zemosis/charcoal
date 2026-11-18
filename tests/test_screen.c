@@ -45,6 +45,23 @@ static void test_flush(void) {
     screen_put(s, 3, 0, 'd', 0xFF0000, 0x000000, ATTR_REVERSE);
     CHECK_STR(flush_str(s, &b), "\033[?2026h\033[1;4H\033[0;7md\033[?2026l");
 
+    // Short hops on a row move forward, the next row starts with \r\n,
+    // and only the color that changed is sent
+    s->depth = COLOR_TRUE;
+    screen_put(s, 0, 1, 'e', 0x00FF00, 0x000000, 0);
+    screen_put(s, 3, 1, 'f', 0x00FF00, 0x0000FF, 0);
+    screen_put(s, 0, 0, 'g', 0x00FF00, 0x000000, 0);
+    CHECK_STR(flush_str(s, &b),
+              "\033[?2026h\033[1;1H\033[0;38;2;0;255;0;48;2;0;0;0mg"
+              "\r\ne\033[2C\033[48;2;0;0;255mf\033[?2026l");
+
+    // Small color changes are skipped only with a tolerance
+    screen_put(s, 3, 1, 'f', 0x04FB00, 0x0000FF, 0);
+    s->tolerance = 8;
+    CHECK_STR(flush_str(s, &b), "\033[?2026h\033[?2026l");
+    s->tolerance = 0;
+    CHECK(strstr(flush_str(s, &b), "38;2;4;251;0") != NULL);
+
     // Out-of-range puts are ignored, resize forces a full redraw
     screen_put(s, -1, 0, 'z', 0, 0, 0);
     screen_put(s, 4, 0, 'z', 0, 0, 0);

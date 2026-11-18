@@ -37,14 +37,32 @@ pattern_half_16      | samples/pattern.png -c 16 -w 48
 pattern_half_16_bayer| samples/pattern.png -c 16 -d bayer -w 48
 pattern_quad_16      | samples/pattern.png -m quad -c 16 -w 48
 pattern_saturation   | samples/pattern.png -c true --saturation 0 -w 48
+anim_gif_first       | samples/anim.gif -m ascii -c mono -w 24
+anim_gif_frame3      | samples/anim.gif -m ascii -c mono -w 24 --frame 3
+anim_gif_time        | samples/anim.gif -m ascii -c mono -w 24 -t 0.5
+anim_gif_past_end    | samples/anim.gif -m ascii -c mono -w 24 -t 60
+anim_apng_frame3     | samples/anim.apng -m ascii -c mono -w 24 --frame 3
+clip_webm_time       | samples/clip.webm -m quad -c true -w 24 -t 0.55
+clip_webm_frame7     | samples/clip.webm -m ascii -c mono -w 24 --frame 7
+anim_webp_frame3     | samples/anim.webp -m ascii -c mono -w 24 --frame 3
+anim_webp_time       | samples/anim.webp -m half -c true -w 24 -t 0.5
 '
 
 pass=0
 fail=0
+skip=0
+
+# Animated WebP needs charcoal built with libwebp
+has_webp=0
+$BIN --version | grep -q 'libwebp [0-9]' && has_webp=1
 while IFS='|' read -r name args; do
     name=$(echo "$name" | xargs)
     [ -z "$name" ] && continue
     expected="$DIR/$name.txt"
+    if [ $has_webp = 0 ] && [[ $name == *webp* ]]; then
+        skip=$((skip + 1))
+        continue
+    fi
     actual=$(eval "$BIN render $args" 2>&1)
 
     if [ $update = 1 ]; then
@@ -60,5 +78,9 @@ while IFS='|' read -r name args; do
 done <<< "$CASES"
 
 [ $update = 1 ] && exit 0
-echo "golden   $pass passed, $fail failed"
+if [ $skip -gt 0 ]; then
+    echo "golden   $pass passed, $fail failed, $skip skipped (no libwebp)"
+else
+    echo "golden   $pass passed, $fail failed"
+fi
 [ $fail = 0 ]
