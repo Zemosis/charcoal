@@ -214,9 +214,20 @@ averages, so their colors are not dithered.
   ▒    ▒▒▒▒ ▒▒▒▒ ▒▒▒  ▒    ▒  ▒ ▒▒▒▒ ▒
   ░░░░ ░  ░ ░  ░ ░  ░ ░░░░ ░░░░ ░  ░ ░░░░
   ```
-- Options overlay (`o`) with tabs (`general`, `render`, `color`, `playback`),
-  the setting list on the left and a description on the right, the selected
-  row highlighted with a solid accent bar, and `←`/`→` to change values.
+- Options overlay (`o`, `F2`) with tabs (`general`, `render`, `color`,
+  `playback`) under the logo: `[current]` tab, the others with their number
+  key lit; the option list on the left as name / value lines, a description
+  on the right, the selected option a solid accent bar with `← value →`.
+  `Tab` / `Shift+Tab` or `1`–`4` switch tabs, `↑`/`↓` select, `←`/`→` (or
+  `Enter`) change. Every change applies at once and is saved to the config.
+  - general: color theme (built-ins and theme files), theme background,
+    rounded corners, vim keys
+  - render: glyph mode, palette, fit, invert
+  - color: color depth (auto/true/256/16/mono), dither, brightness,
+    contrast, gamma, saturation
+  - playback: loop, max fps (off, 10, 15, 20, 24, 30, 60)
+- Buttons in borders light the keys that work them in the accent color:
+  `┐<speed 1.00×>┌` (`<` `>`), `┐Repeat on┌` (`R`).
 
 ### 6.2 Layout
 
@@ -293,8 +304,10 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 | `<` / `>` | Playback speed down / up |
 | `R` | Toggle repeat (loop); `L` is vim pan right |
 | `Home` | Back to the start |
-| `e` | Export the current frame (prompts for a filename) |
-| `Ctrl+R` | Redraw; also reloads config and themes from M5 |
+| `b` / `B`, `t` / `T`, `g` / `G`, `s` / `S` | Brightness, contrast, gamma, saturation up / down |
+| `4` | Toggle the histogram panel |
+| `e` | Export the view: a prompt in the viewer's bottom border, prefilled with `<name>.html`; `.html`, `.ans` or `.txt` |
+| `Ctrl+R` | Reload the config and theme, redraw |
 
 Mouse support (click panel buttons, scroll to zoom) is planned for M6.
 
@@ -316,8 +329,12 @@ Mouse support (click panel buttons, scroll to zoom) is planned for M6.
 
 ### 6.5 Themes
 
-Themes are plain `key = "#rrggbb"` files in `~/.config/charcoal/themes/`.
-Built-ins are compiled in.
+Themes are plain `key = "#rrggbb"` files in `~/.config/charcoal/themes/`,
+named `<name>.theme`; a file wins over a built-in of the same name. Missing
+keys keep the default theme's color. Besides `#rrggbb`, a color can be
+`default` (the terminal's own) or `0`–`255` (a palette index). Built-ins are
+compiled in. The `theme_background` option replaces `main_bg` with the
+terminal's own background.
 
 ```
 main_bg      = "#282828"
@@ -377,19 +394,37 @@ Measured (release, 200×56 cells, `half`): 1080p30 H.264 (openh264) plays with
 `~/.config/charcoal/charcoal.conf` (`$XDG_CONFIG_HOME` honoured):
 
 ```
-theme         = "gruvbox_dark"
-mode          = "half"
-palette       = "standard"
-color         = "auto"
-dither        = "none"
-vim_keys      = true
-rounded       = true
-panels        = "viewer info controls histogram timeline"
-cache_mb      = 256
+theme            = "gruvbox_dark"
+theme_background = true
+rounded          = true
+vim_keys         = true
+
+mode             = "half"
+palette          = "standard"      # or any ramp, densest first
+fit              = "contain"
+invert           = false
+
+color            = "auto"
+dither           = "none"
+brightness       = 0
+contrast         = 1
+gamma            = 1
+saturation       = 1
+
+loop             = true
+max_fps          = 0               # 0 = every frame
 ```
 
-Command-line options override the config. A missing or invalid config falls
-back to the defaults, with a warning in the status line.
+The options overlay writes this file (through a temporary file and a
+rename), so it stays complete and commented. The config applies to `render`
+and `export` too. Command-line options override it for one run (`--theme`
+too, but changing an option in the overlay then saves that theme). A missing
+file means defaults; bad lines are skipped with a warning naming the line,
+on stderr for `render`/`export` and in the viewer's border otherwise.
+`Ctrl+R` reloads the theme and general settings. Golden tests point
+`XDG_CONFIG_HOME` elsewhere so a user's config cannot change them.
+
+Panel visibility is not saved yet (`1`–`5` are per session).
 
 ---
 
@@ -399,10 +434,11 @@ back to the defaults, with a warning in the status line.
 |---|---|
 | `.txt` | Plain characters, no color |
 | `.ans` | Characters + ANSI escape codes (shown by `cat`) |
-| `.html` | `<pre>` with inline-styled spans, dark background, monospace |
+| `.html` | A page with a `<pre>` of inline-styled spans (one per run of equal colors), `line-height: 1` so half blocks join up, the theme's colors for default cells |
 
-Video export writes one frame (`--frame` / `--time`). Exporting a whole video
-is out of scope for v1.
+Video export writes one frame (`--frame` / `--time`); in the viewer, `e`
+exports exactly what is on screen. Exporting a whole video is out of scope
+for v1.
 
 ---
 
@@ -414,7 +450,7 @@ charcoal/
 ├── src/
 │   ├── main.c          argument parsing, mode dispatch
 │   ├── app.c           app state, event loop, key handling
-│   ├── config.c        config + theme file parsing
+│   ├── config.c        config file: defaults, parse, write, load, save
 │   ├── media/
 │   │   ├── decoder.c   FFmpeg open/probe/decode/seek, kind detection
 │   │   ├── media_internal.h  FFmpeg types shared by decoder.c and player.c
@@ -431,10 +467,10 @@ charcoal/
 │       ├── term.c      raw mode, alt screen, size, signals, input decoding
 │       ├── screen.c    cell grid, double buffer, diff flush
 │       ├── draw.c      boxes, titles, buttons, text, braille graphs
-│       ├── theme.c     theme tables, built-ins
+│       ├── theme.c     built-in themes, theme files, theme list
 │       ├── layout.c    panel placement, resize
 │       └── views/      viewer.c, panels.c (info, controls, status),
-│                       timeline.c, help.c; later histogram, options
+│                       timeline.c, histogram.c, options.c, help.c
 ├── tests/              unit + golden tests
 ├── samples/            small test media checked into the repo
 ├── docs/SPEC.md
@@ -535,7 +571,7 @@ include guards in headers.
 | M2 ✓ | All glyph modes, palettes, color depths, dithering, adjustments | Golden tests for every mode pass |
 | M3 ✓ | TUI shell: term, screen diffing, boxes, theme, viewer + info + controls panels, help overlay | Can browse settings live on a still image; resize and `Ctrl+Z` are safe |
 | M4 ✓ | Animation and video playback, timeline panel, seeking | 1080p30 target met; GIF/APNG/WebP animate correctly (WebP with libwebp, see 4) |
-| M5 | Options overlay, config file, themes, histogram panel, export | Settings persist; all 5 built-in themes |
+| M5 ✓ | Options overlay, config file, themes, histogram panel, export | Settings persist; all 5 built-in themes |
 | M6 | Polish: mouse, frame-time graph, edge mode tuning, README with screenshots | Daily-driver quality |
 
 ---
@@ -576,3 +612,11 @@ Resolved 2026-11-18:
     due meanwhile are skipped, so a slow terminal shows fewer frames but never
     falls behind. The info panel's `output` row shows frames per second and
     the round trip; inside tmux, tmux answers, so it covers charcoal → tmux.
+15. **Every control has a hotkey**, its letter lit in the label like btop:
+    **b**rightness, con**t**rast, **g**amma, **s**aturation (lowercase up,
+    uppercase down), next to m p c d i f.
+16. **Max fps** option for slow terminals (tmux): frames held back by it are
+    not counted as dropped.
+17. **The histogram** shows the luminance of exactly what is on screen
+    (after adjustments), as braille bars with a square-root scale so small
+    counts stay visible; it sits below the controls when there is room.

@@ -3,8 +3,8 @@
 A terminal ASCII art viewer for images, animations and video, written in C,
 with a btop-inspired interface.
 
-> Status: M4 done (animation and video playback). Next: options overlay,
-> config file, themes, histogram, HTML export (M5). See
+> Status: M5 done (options, config file, themes, histogram, HTML export).
+> Next: polish (M6). See
 > [docs/SPEC.md](docs/SPEC.md) for the full specification and milestones.
 
 ## Planned features
@@ -39,6 +39,16 @@ make test       # unit tests (no FFmpeg needed)
 make golden     # render samples/ and compare with tests/golden/
 ```
 
+## Configuration
+
+Press `o` in the viewer for the options; they are saved to
+`~/.config/charcoal/charcoal.conf`. Themes: `gruvbox_dark` (default), `nord`,
+`tokyo_night`, `mono`, `tty`, or your own
+`~/.config/charcoal/themes/<name>.theme` with lines like
+`main_bg = "#282828"` (keys: `main_bg`, `main_fg`, `title`, `hi_fg`,
+`selected_bg`, `selected_fg`, `inactive_fg`, `box_border`, `graph_low`,
+`graph_mid`, `graph_high`).
+
 ## Installing
 
 ```bash
@@ -58,13 +68,16 @@ charcoal render photo.jpg -m ascii -p detailed -c mono -w 80 -i   # light termin
 charcoal clip.mp4                        # plays, with a timeline
 charcoal render clip.mp4 -t 12.5         # the frame at 12.5 s
 charcoal render anim.gif --frame 3       # the 4th frame
-charcoal export photo.jpg -o photo.ans   # .txt or .ans
+charcoal export photo.jpg -o photo.html  # .txt, .ans or .html
+charcoal photo.jpg --theme nord
 ```
 
 In the viewer, `↑`/`↓` (or `j`/`k`) pick a setting in the controls panel and
 `←`/`→` (or `h`/`l`) change it; `m`, `p`, `c`, `d`, `i`, `f` jump straight to
 mode, palette, color, dither, invert and fit. `+`/`-` zoom, `Shift`+arrows pan,
-`r` resets, `?` shows every key and `q` quits. For animations and video:
+`b`/`t`/`g`/`s` raise brightness, contrast, gamma and saturation (capitals
+lower them), `e` exports the view, `o` opens the options, `r` resets, `?`
+shows every key and `q` quits. For animations and video:
 `Space` plays and pauses, `,`/`.` step a frame, `[`/`]` and `{`/`}` seek 5
 and 30 seconds, `<`/`>` change speed, `R` toggles repeat and `Home` restarts. When stdout is not a terminal,
 `charcoal <file>` prints once like `render`.
