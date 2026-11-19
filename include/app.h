@@ -79,6 +79,10 @@ typedef struct App {
     int src_h;
     int64_t duration_us;        // 0 when unknown
     double fps;
+    Frame *proxy;               // a still shrunk to about twice what the
+    int proxy_serial;           // screen can show, which most views resize
+    int proxy_cols;             // from; made for this frame and screen
+    int proxy_rows;
     Frame *frame;               // on screen: full size for stills, scaled
                                 // to the view for animations and video
     int frame_serial;           // bumps whenever frame changes
@@ -94,6 +98,7 @@ typedef struct App {
     int dropped;                // frames skipped to keep up
     int frame_drawn;            // the frame on screen reached the terminal
     int limited;                // the max fps limit held the frame back
+    int palette_changed;        // the terminal reported its real colors
     int awaiting_ack;           // a frame went out, the terminal has not
     double ack_sent_ms;         // answered yet
     double term_lag_ms;         // how long the terminal takes per frame
@@ -190,7 +195,7 @@ typedef struct App {
     uint8_t *pixels;            // the view resized, before adjustments
     uint8_t *work;              // a copy the adjustments run on
     size_t pixels_cap;
-    int pixels_key[7];          // crop, size and frame the pixels came from
+    int pixels_key[8];          // crop, size and source of the pixels
     double render_ms;
 } App;
 

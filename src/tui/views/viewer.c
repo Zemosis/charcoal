@@ -6,8 +6,12 @@
 #include <string.h>
 #include <time.h>
 
+// Stills with more pixels than this get a smaller working copy
+#define PROXY_MIN_PIXELS 2000000
+
 // Prototype
 static double now_ms(void);
+static void update_proxy(App *a);
 static int ensure_buffers(App *a, size_t bytes);
 static int clampi(int v, int lo, int hi);
 
@@ -38,6 +42,39 @@ static int ensure_buffers(App *a, size_t bytes) {
 
 static int clampi(int v, int lo, int hi) {
     return v < lo ? lo : v > hi ? hi : v;
+}
+
+// Keep a copy of a big still at about twice the pixels the whole screen
+// can show in braille (2 x 4 per cell); resizing that is much faster than
+// resizing the original on every mode or setting change
+static void update_proxy(App *a) {
+    Frame *f = a->frame;
+    int cols = a->screen->cols, rows = a->screen->rows;
+    if (a->player || !f || (long)f->width * f->height < PROXY_MIN_PIXELS) {
+        frame_free(a->proxy);
+        a->proxy = NULL;
+        return;
+    }
+    if (a->proxy && a->proxy_serial == a->frame_serial && cols <= a->proxy_cols &&
+        rows <= a->proxy_rows) {
+        return;     // still good
+    }
+    double s = fmax(cols * 2.0 * 2 / f->width, rows * 4.0 * 2 / f->height);
+    frame_free(a->proxy);
+    a->proxy = NULL;
+    if (s > 0.5) {
+        return;     // would not be much smaller than the original
+    }
+    int pw = (int)ceil(f->width * s), ph = (int)ceil(f->height * s);
+    Frame *p = frame_new(pw, ph);
+    if (!p || resize_rgb(f->rgb, f->width, f->height, p->rgb, pw, ph) != 0) {
+        frame_free(p);
+        return;
+    }
+    a->proxy = p;
+    a->proxy_serial = a->frame_serial;
+    a->proxy_cols = cols;
+    a->proxy_rows = rows;
 }
 
 void viewer_update(App *a) {
@@ -99,8 +136,19 @@ void viewer_update(App *a) {
         return;
     }
 
-    // The same region in the current frame's pixels (video frames are smaller)
-    int fw = a->frame->width, fh = a->frame->height;
+    // Resize from the smaller copy when it has enough pixels for this view;
+    // zoomed far in, only the original does
+    update_proxy(a);
+    const Frame *src = a->frame;
+    int use_proxy = 0;
+    if (a->proxy && vis_w * a->proxy->width / W >= out_w &&
+        vis_h * a->proxy->height / H >= out_h) {
+        src = a->proxy;
+        use_proxy = 1;
+    }
+
+    // The same region in the source's pixels (video frames are smaller)
+    int fw = src->width, fh = src->height;
     double sx = fw / W, sy = fh / H;
     int rx = clampi((int)lround(vis_x * sx), 0, fw - 1);
     int ry = clampi((int)lround(vis_y * sy), 0, fh - 1);
@@ -114,9 +162,9 @@ void viewer_update(App *a) {
     }
 
     // Resizing a big image is the slow step, so it is cached per frame
-    int key[7] = {rx, ry, rw, rh, out_w, out_h, a->frame_serial};
+    int key[8] = {rx, ry, rw, rh, out_w, out_h, a->frame_serial, use_proxy};
     if (memcmp(key, a->pixels_key, sizeof(key)) != 0) {
-        if (resize_rgb_rect(a->frame->rgb, fw, rx, ry, rw, rh, a->pixels, out_w,
+        if (resize_rgb_rect(src->rgb, fw, rx, ry, rw, rh, a->pixels, out_w,
                             out_h) != 0) {
             snprintf(a->message, sizeof(a->message), "out of memory");
             return;

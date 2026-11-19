@@ -26,6 +26,9 @@
 #define ACK_TIMEOUT_MS 250
 #define STATUS_REQUEST "\033[5n"
 
+// The config's panel list follows the Panel enum
+_Static_assert(PANEL_COUNT == CONFIG_PANELS, "panels out of step");
+
 // Playback speeds < and > step through
 static const double SPEEDS[] = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0};
 #define SPEED_COUNT ((int)(sizeof(SPEEDS) / sizeof(SPEEDS[0])))
@@ -190,6 +193,7 @@ static void open_neighbor(App *a, int dir) {
 static void app_free(App *a) {
     player_close(a->player);
     picker_close(a);
+    frame_free(a->proxy);
     grid_free(a->export_art);
     frame_free(a->frame);
     grid_free(a->art);
@@ -272,6 +276,12 @@ static void draw(App *a) {
         now - a->last_frame_ms < 1000.0 / a->max_fps) {
         a->limited = 1;
         return;
+    }
+
+    if (a->palette_changed) {
+        a->palette_changed = 0;
+        a->dirty = 1;
+        a->screen->full = 1;
     }
 
     // Video noise flickers flat areas by a few steps each frame; sending
@@ -698,6 +708,15 @@ static void handle_key(App *a, int key) {
         handle_mouse(a);
         return;
     }
+    if (key == KEY_PALETTE) {
+        // The terminal's real colors: 16-color output matches them from now
+        int index;
+        uint32_t rgb;
+        term_palette(&index, &rgb);
+        color_set_ansi16(index, rgb);
+        a->palette_changed = 1;
+        return;
+    }
     if (key == KEY_TERM_OK) {
         // Smoothed so the info panel does not jitter
         double lag = now_ms() - a->ack_sent_ms;
@@ -789,10 +808,18 @@ static void handle_key(App *a, int key) {
     case '2':
     case '3':
     case '4':
-    case '5':
-        a->show[key - '1'] = !a->show[key - '1'];
+    case '5': {
+        // Panels shown or hidden are remembered for next time
+        int p = key - '1';
+        char err[160];
+        a->show[p] = !a->show[p];
+        a->config.panels[p] = a->show[p];
+        if (config_save(&a->config, err, sizeof(err)) != 0) {
+            snprintf(a->message, sizeof(a->message), "%s", err);
+        }
         layout(a);
         break;
+    }
     case 'e':
         start_export(a);
         break;
@@ -1086,7 +1113,7 @@ int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
         snprintf(a.message, sizeof(a.message), "%s", warn);
     }
     for (int i = 0; i < PANEL_COUNT; i++) {
-        a.show[i] = 1;
+        a.show[i] = config->panels[i];
     }
 
     // No path, or a folder without media: start empty on the file picker
@@ -1114,6 +1141,7 @@ int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
         return 1;
     }
     term_set_mouse(a.config.mouse);
+    term_query_palette();
     int cols, rows;
     term_size(&cols, &rows, &a.cell_aspect);
     a.screen = screen_new(cols, rows, ui_depth);

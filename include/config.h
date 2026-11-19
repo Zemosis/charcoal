@@ -12,6 +12,9 @@ typedef enum FitMode {
     FIT_COUNT
 } FitMode;
 
+// Panels in hotkey order 1-5, for the "panels" setting
+#define CONFIG_PANELS 5
+
 // Settings kept in ~/.config/charcoal/charcoal.conf
 typedef struct Config {
     // General
@@ -21,6 +24,8 @@ typedef struct Config {
     int rounded;            // rounded box corners
     int vim_keys;
     int mouse;              // clicks, wheel and drags in the viewer
+    int panels[CONFIG_PANELS];  // viewer, info, controls, histogram,
+                                // timeline: shown or not
 
     // Render defaults
     GlyphMode mode;

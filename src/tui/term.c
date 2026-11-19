@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -26,6 +27,8 @@ static struct termios orig_termios;
 static int active = 0;
 static int mouse_on = 0;
 static MouseEvent last_mouse;
+static int last_palette_index;
+static uint32_t last_palette_rgb;
 static int handlers_set = 0;
 static int sig_pipe[2] = {-1, -1};
 
@@ -43,6 +46,8 @@ static int input_ready(int timeout_ms);
 static void consume(int n);
 static int decode_csi(int *used);
 static int decode_ss3(int *used);
+static int decode_osc(int *used);
+static int hex_channel(const char *s, int n);
 
 // Raw input, no echo, no signals from Ctrl+C / Ctrl+Z (they arrive as keys)
 static void enter_raw(void) {
@@ -76,6 +81,73 @@ void term_set_mouse(int on) {
 
 void term_mouse(MouseEvent *ev) {
     *ev = last_mouse;
+}
+
+void term_query_palette(void) {
+    char q[512];
+    int n = 0;
+    for (int i = 0; i < 16; i++) {
+        n += snprintf(q + n, sizeof(q) - (size_t)n, "\033]4;%d;?\007", i);
+    }
+    if (active && write(STDOUT_FILENO, q, (size_t)n) < 0) {
+        // Terminal gone
+    }
+}
+
+void term_palette(int *index, uint32_t *rgb) {
+    *index = last_palette_index;
+    *rgb = last_palette_rgb;
+}
+
+// One channel of "rgb:RRRR/GGGG/BBBB": 1 to 4 hex digits, scaled to 0-255
+static int hex_channel(const char *s, int n) {
+    unsigned v = 0;
+    for (int i = 0; i < n; i++) {
+        char c = s[i];
+        v = v * 16 + (unsigned)(c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10);
+    }
+    unsigned max = (1u << (4 * n)) - 1;
+    return (int)((v * 255 + max / 2) / max);
+}
+
+// ESC ] ... BEL or ESC \: replies to OSC queries, such as
+// "4;1;rgb:cccc/2424/1d1d" for palette color 1
+static int decode_osc(int *used) {
+    int end = -1, term_len = 0;
+    for (int i = 2; i < in_len; i++) {
+        if (inbuf[i] == 0x07) {
+            end = i;
+            term_len = 1;
+            break;
+        }
+        if (inbuf[i] == 0x1B && i + 1 < in_len && inbuf[i + 1] == '\\') {
+            end = i;
+            term_len = 2;
+            break;
+        }
+    }
+    if (end < 0) {
+        *used = in_len >= (int)sizeof(inbuf) ? in_len : 0;   // wait for more
+        return KEY_NONE;
+    }
+    *used = end + term_len;
+
+    char body[128];
+    int len = end - 2 < (int)sizeof(body) - 1 ? end - 2 : (int)sizeof(body) - 1;
+    memcpy(body, inbuf + 2, (size_t)len);
+    body[len] = '\0';
+
+    int index;
+    char r[5], g[5], b[5];
+    if (sscanf(body, "4;%d;rgb:%4[0-9a-fA-F]/%4[0-9a-fA-F]/%4[0-9a-fA-F]",
+               &index, r, g, b) != 4) {
+        return KEY_NONE;
+    }
+    last_palette_index = index;
+    last_palette_rgb = (uint32_t)(hex_channel(r, (int)strlen(r)) << 16 |
+                                  hex_channel(g, (int)strlen(g)) << 8 |
+                                  hex_channel(b, (int)strlen(b)));
+    return KEY_PALETTE;
 }
 
 // Signals only leave a byte in the pipe; the main loop does the work
@@ -358,7 +430,9 @@ int term_read_key(void) {
                 continue;
             }
             int used = 0, key;
-            if (inbuf[1] == '[') {
+            if (inbuf[1] == ']') {
+                key = decode_osc(&used);
+            } else if (inbuf[1] == '[') {
                 key = decode_csi(&used);
             } else if (inbuf[1] == 'O') {
                 key = decode_ss3(&used);

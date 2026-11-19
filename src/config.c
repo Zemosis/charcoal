@@ -12,11 +12,16 @@
 
 static const char *const FIT_NAMES[FIT_COUNT] = {"contain", "cover", "stretch"};
 
+static const char *const PANEL_NAMES[CONFIG_PANELS] = {
+    "viewer", "info", "controls", "histogram", "timeline",
+};
+
 // Prototype
 static char *trim(char *s);
 static void unquote(char *s);
 static int parse_bool(const char *v, int *out);
 static int parse_num(const char *v, double lo, double hi, double *out);
+static int parse_panels(const char *v, int *panels);
 static int apply(Config *c, const char *key, const char *v);
 static void add_warning(char *warn, int warn_len, const char *fmt, int line,
                         const char *what);
@@ -44,6 +49,9 @@ void config_defaults(Config *c) {
     c->rounded = 1;
     c->vim_keys = 1;
     c->mouse = 1;
+    for (int i = 0; i < CONFIG_PANELS; i++) {
+        c->panels[i] = 1;
+    }
     c->mode = MODE_HALF;
     snprintf(c->palette, sizeof(c->palette), "standard");
     c->fit = FIT_CONTAIN;
@@ -101,6 +109,26 @@ static int parse_num(const char *v, double lo, double hi, double *out) {
     return 0;
 }
 
+// "viewer info controls" -> which panels are shown; unknown names fail
+static int parse_panels(const char *v, int *panels) {
+    int shown[CONFIG_PANELS] = {0};
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s", v);
+    for (char *tok = strtok(buf, " ,"); tok; tok = strtok(NULL, " ,")) {
+        int found = 0;
+        for (int i = 0; i < CONFIG_PANELS; i++) {
+            if (strcmp(tok, PANEL_NAMES[i]) == 0) {
+                shown[i] = found = 1;
+            }
+        }
+        if (!found) {
+            return -1;
+        }
+    }
+    memcpy(panels, shown, sizeof(shown));
+    return 0;
+}
+
 // Set one key, returns 0, -1 for a bad value, -2 for an unknown key
 static int apply(Config *c, const char *key, const char *v) {
     int i;
@@ -118,6 +146,8 @@ static int apply(Config *c, const char *key, const char *v) {
         return parse_bool(v, &c->vim_keys);
     } else if (strcmp(key, "mouse") == 0) {
         return parse_bool(v, &c->mouse);
+    } else if (strcmp(key, "panels") == 0) {
+        return parse_panels(v, c->panels);
     } else if (strcmp(key, "mode") == 0) {
         if ((i = glyph_mode_from_name(v)) < 0) {
             return -1;
@@ -256,6 +286,16 @@ void config_write(const Config *c, Buf *out) {
     put_line(out, "rounded", c->rounded ? "true" : "false", 0);
     put_line(out, "vim_keys", c->vim_keys ? "true" : "false", 0);
     put_line(out, "mouse", c->mouse ? "true" : "false", 0);
+    char panels[96] = "";
+    for (int i = 0; i < CONFIG_PANELS; i++) {
+        if (c->panels[i]) {
+            if (panels[0]) {
+                strcat(panels, " ");
+            }
+            strcat(panels, PANEL_NAMES[i]);
+        }
+    }
+    put_line(out, "panels", panels, 1);
     buf_putc(out, '\n');
     put_line(out, "mode", glyph_mode_name(c->mode), 1);
     put_line(out, "palette", c->palette, 1);
