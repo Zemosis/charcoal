@@ -17,8 +17,11 @@ struct MediaFile {
     AVFormatContext *fmt;
     const AVCodec *codec;
     int stream;
-    int width;
+    int width;          // as displayed: swapped when turned 90 degrees
     int height;
+    int coded_w;        // as stored in the file
+    int coded_h;
+    int orient;         // EXIF-style orientation 1-8 (1 = as stored)
     MediaKind kind;     // known after the first frame is decoded
     struct WebpFile *webp;
 };
@@ -48,9 +51,14 @@ int decoder_seek(MediaFile *m, Decoder *d, int64_t t_us);
 void decoder_timing(MediaFile *m, Decoder *d, const AVFrame *av,
                     int64_t *pts_us, int64_t *dur_us);
 
-// Convert to RGB24 at w x h (area-averaged), transparent pixels over black
-// sws is reused between calls and freed by the caller with sws_free_context
-Frame *frame_convert(const AVFrame *av, int w, int h, struct SwsContext **sws,
-                     char *err, int err_len);
+// Orientation 1-8 of a decoded frame: its own display matrix (JPEG EXIF
+// arrives this way), else hint (from the stream), else 1
+int frame_orient_of(const AVFrame *av, int hint);
+
+// Convert to RGB24 at w x h as displayed (area-averaged), turned and
+// mirrored per its orientation, transparent pixels over black; 0 x 0 keeps
+// the decoded size. sws is reused between calls; free with sws_free_context
+Frame *frame_convert(const AVFrame *av, int w, int h, int orient_hint,
+                     struct SwsContext **sws, char *err, int err_len);
 
 #endif // CHARCOAL_MEDIA_INTERNAL_H

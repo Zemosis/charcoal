@@ -1,8 +1,10 @@
 #include "media_internal.h"
 
+#include <libavutil/display.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +32,9 @@ static void set_av_error(char *err, int err_len, const char *what, int code);
 static int is_animated_codec(enum AVCodecID id);
 static int pick_lowres(const MediaFile *m, int need_w, int need_h);
 static int has_more_frames(MediaFile *m, Decoder *d);
+static int orient_from_matrix(const int32_t *m);
+static void set_orient(MediaFile *m, int orient);
+static Frame *frame_orient(Frame *f, int orient);
 #ifdef HAVE_WEBP
 static int is_webp_file(const char *path);
 static int64_t webp_delay_us(int ms);
@@ -50,18 +55,89 @@ static int is_animated_codec(enum AVCodecID id) {
            id == AV_CODEC_ID_WEBP;
 }
 
-// Largest JPEG-style shrink that still leaves need_w x need_h pixels
+// Largest JPEG-style shrink that still leaves need_w x need_h pixels;
+// a JPEG's turn is only known after decoding, so both sides must cover
+// the larger need
 static int pick_lowres(const MediaFile *m, int need_w, int need_h) {
     int lowres = 0;
-    if (!m->codec) {
+    int need = need_w > need_h ? need_w : need_h;
+    if (!m->codec || need_w < 1 || need_h < 1) {
         return 0;
     }
-    while (lowres < m->codec->max_lowres && need_w > 0 && need_h > 0 &&
-           (m->width >> (lowres + 1)) >= need_w &&
-           (m->height >> (lowres + 1)) >= need_h) {
+    while (lowres < m->codec->max_lowres &&
+           (m->coded_w >> (lowres + 1)) >= need &&
+           (m->coded_h >> (lowres + 1)) >= need) {
         lowres++;
     }
     return lowres;
+}
+
+// EXIF orientation from a display matrix, read the way ffmpeg's autorotate
+// does: 1 as stored, 2 mirrored, 3 upside down, 4 flipped, 5 transposed,
+// 6 turned clockwise, 7 transversed, 8 turned counterclockwise
+static int orient_from_matrix(const int32_t *m) {
+    double theta = -round(av_display_rotation_get(m));
+    theta -= 360 * floor(theta / 360 + 0.9 / 360);
+    if (fabs(theta - 90) < 1) {
+        return m[3] > 0 ? 5 : 6;
+    }
+    if (fabs(theta - 270) < 1) {
+        return m[3] < 0 ? 7 : 8;
+    }
+    if (fabs(theta - 180) < 1) {
+        int h = m[0] < 0, v = m[4] < 0;
+        return h && v ? 3 : h ? 2 : v ? 4 : 1;
+    }
+    return m[4] < 0 ? 4 : m[0] < 0 ? 2 : 1;
+}
+
+int frame_orient_of(const AVFrame *av, int hint) {
+    const AVFrameSideData *sd =
+        av_frame_get_side_data(av, AV_FRAME_DATA_DISPLAYMATRIX);
+    if (sd && sd->size >= 9 * sizeof(int32_t)) {
+        return orient_from_matrix((const int32_t *)sd->data);
+    }
+    return hint >= 1 && hint <= 8 ? hint : 1;
+}
+
+// Record the orientation; turned images swap their displayed size
+static void set_orient(MediaFile *m, int orient) {
+    m->orient = orient;
+    m->width = orient >= 5 ? m->coded_h : m->coded_w;
+    m->height = orient >= 5 ? m->coded_w : m->coded_h;
+}
+
+// Turn or mirror f as its orientation says; frees f, returns the new frame
+static Frame *frame_orient(Frame *f, int orient) {
+    if (!f || orient <= 1 || orient > 8) {
+        return f;
+    }
+    int w = f->width, h = f->height;
+    int swap = orient >= 5;
+    Frame *o = frame_new(swap ? h : w, swap ? w : h);
+    if (!o) {
+        frame_free(f);
+        return NULL;
+    }
+    for (int y = 0; y < o->height; y++) {
+        for (int x = 0; x < o->width; x++) {
+            // Which stored pixel lands at x, y
+            int sx, sy;
+            switch (orient) {
+            case 2: sx = w - 1 - x; sy = y; break;
+            case 3: sx = w - 1 - x; sy = h - 1 - y; break;
+            case 4: sx = x; sy = h - 1 - y; break;
+            case 5: sx = y; sy = x; break;
+            case 6: sx = y; sy = h - 1 - x; break;
+            case 7: sx = w - 1 - y; sy = h - 1 - x; break;
+            default: sx = w - 1 - y; sy = x; break;
+            }
+            memcpy(o->rgb + ((size_t)y * o->width + x) * 3,
+                   f->rgb + ((size_t)sy * w + sx) * 3, 3);
+        }
+    }
+    frame_free(f);
+    return o;
 }
 
 int decoder_open(MediaFile *m, Decoder *d, int lowres, char *err, int err_len) {
@@ -199,13 +275,19 @@ void decoder_timing(MediaFile *m, Decoder *d, const AVFrame *av,
     d->next_pts_us = *pts_us + *dur_us;
 }
 
-Frame *frame_convert(const AVFrame *av, int w, int h, struct SwsContext **sws,
-                     char *err, int err_len) {
+Frame *frame_convert(const AVFrame *av, int w, int h, int orient_hint,
+                     struct SwsContext **sws, char *err, int err_len) {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(av->format);
     int alpha = desc && (desc->flags & AV_PIX_FMT_FLAG_ALPHA);
+    int orient = frame_orient_of(av, orient_hint);
     if (w < 1 || h < 1) {
         w = av->width;
         h = av->height;
+    } else if (orient >= 5) {
+        // Scale to the stored shape; turning afterwards gives w x h
+        int t = w;
+        w = h;
+        h = t;
     }
 
     // An FFmpeg-allocated (padded) output frame: swscale skips the last few
@@ -252,7 +334,7 @@ Frame *frame_convert(const AVFrame *av, int w, int h, struct SwsContext **sws,
         }
     }
     av_frame_free(&conv);
-    return f;
+    return frame_orient(f, orient);
 
 fail:
     av_frame_free(&conv);
@@ -352,8 +434,9 @@ static int webp_open(MediaFile *m, const char *path, char *err, int err_len) {
     }
 
     m->webp = w;
-    m->width = (int)info.canvas_width;
-    m->height = (int)info.canvas_height;
+    m->coded_w = (int)info.canvas_width;
+    m->coded_h = (int)info.canvas_height;
+    set_orient(m, 1);
     m->kind = MEDIA_STILL;
     return 0;
 
@@ -438,9 +521,18 @@ MediaFile *media_open(const char *path, char *err, int err_len) {
     }
 
     AVCodecParameters *par = m->fmt->streams[m->stream]->codecpar;
-    m->width = par->width;
-    m->height = par->height;
+    m->coded_w = par->width;
+    m->coded_h = par->height;
     m->kind = MEDIA_STILL;
+
+    // Phone videos say how to turn them in the stream; JPEG photos only
+    // tell on their first frame (see media_decode_at)
+    const AVPacketSideData *sd =
+        av_packet_side_data_get(par->coded_side_data, par->nb_coded_side_data,
+                                AV_PKT_DATA_DISPLAYMATRIX);
+    set_orient(m, sd && sd->size >= 9 * sizeof(int32_t)
+                      ? orient_from_matrix((const int32_t *)sd->data)
+                      : 1);
     if (m->width < 1 || m->height < 1) {
         // FFmpeg reads no size when its decoder cannot handle the file,
         // which is what happens to animated WebP before FFmpeg supports it
@@ -534,7 +626,9 @@ Frame *media_decode_at(MediaFile *m, int64_t t_us, int64_t index, int need_w,
         }
     }
 
-    result = frame_convert(last, 0, 0, &sws, err, err_len);
+    // The first frame may carry the orientation (EXIF); sizes follow it
+    set_orient(m, frame_orient_of(last, m->orient));
+    result = frame_convert(last, 0, 0, m->orient, &sws, err, err_len);
     if (result && t_us == 0 && index <= 0) {
         // The first frame tells still images apart from animations
         if (has_more_frames(m, &d)) {

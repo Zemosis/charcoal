@@ -110,7 +110,8 @@ static void *player_main(void *arg) {
         int ret = decoder_next(p->m, &p->d, p->av);
         if (ret == AVERROR_EOF && skip != INT64_MIN && p->last->width > 0) {
             // Sought past the end: settle on the last frame there is
-            Frame *f = frame_convert(p->last, w, h, &p->sws, err, sizeof(err));
+            Frame *f = frame_convert(p->last, w, h, p->m->orient, &p->sws, err,
+                                     sizeof(err));
             av_frame_unref(p->last);
             pthread_mutex_lock(&p->mu);
             if (f && gen == p->generation && !p->seek_pending) {
@@ -150,7 +151,8 @@ static void *player_main(void *arg) {
             continue;
         }
         av_frame_unref(p->last);
-        Frame *f = frame_convert(p->av, w, h, &p->sws, err, sizeof(err));
+        Frame *f = frame_convert(p->av, w, h, p->m->orient, &p->sws, err,
+                                 sizeof(err));
         av_frame_unref(p->av);
 
         pthread_mutex_lock(&p->mu);

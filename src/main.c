@@ -51,6 +51,9 @@ static ColorDepth detect_color(void);
 static int parse_args(int argc, char **argv, Args *a);
 static int terminal_size(int *cols, int *rows, double *cell_aspect);
 static int write_all(FILE *f, const Buf *b);
+static void output_size(const Args *a, int img_w, int img_h, int have_term,
+                        int term_cols, int term_rows, double aspect, int *cols,
+                        int *rows);
 static int has_suffix(const char *s, const char *suffix);
 
 static void usage(FILE *out) {
@@ -330,6 +333,29 @@ static int terminal_size(int *cols, int *rows, double *cell_aspect) {
     return 0;
 }
 
+// Cells for the output: explicit, else fit the terminal, else a fixed width
+static void output_size(const Args *a, int img_w, int img_h, int have_term,
+                        int term_cols, int term_rows, double aspect, int *cols,
+                        int *rows) {
+    if (a->width && a->height) {
+        *cols = a->width;
+        *rows = a->height;
+    } else if (a->width) {
+        *cols = a->width;
+        *rows = render_rows_for_cols(img_w, img_h, *cols, aspect);
+    } else if (a->height) {
+        *rows = a->height;
+        *cols = render_cols_for_rows(img_w, img_h, *rows, aspect);
+    } else if (have_term) {
+        // One line is left for the shell prompt
+        render_fit(img_w, img_h, term_cols, term_rows - 1, aspect,
+                   a->opts.mode, cols, rows);
+    } else {
+        render_fit(img_w, img_h, DEFAULT_COLS, 10000, aspect, a->opts.mode,
+                   cols, rows);
+    }
+}
+
 static int write_all(FILE *f, const Buf *b) {
     return fwrite(b->data, 1, b->len, f) == b->len ? 0 : -1;
 }
@@ -376,28 +402,12 @@ int main(int argc, char **argv) {
     int img_w, img_h;
     media_size(m, &img_w, &img_h);
 
-    // Output size: explicit, else fit the terminal, else a fixed width
     int cols = 0, rows = 0, term_cols = 0, term_rows = 0;
     double aspect = DEFAULT_CELL_ASPECT;
     int have_term = a.cmd != CMD_EXPORT &&
                     terminal_size(&term_cols, &term_rows, &aspect) == 0;
-    if (a.width && a.height) {
-        cols = a.width;
-        rows = a.height;
-    } else if (a.width) {
-        cols = a.width;
-        rows = render_rows_for_cols(img_w, img_h, cols, aspect);
-    } else if (a.height) {
-        rows = a.height;
-        cols = render_cols_for_rows(img_w, img_h, rows, aspect);
-    } else if (have_term) {
-        // One line is left for the shell prompt
-        render_fit(img_w, img_h, term_cols, term_rows - 1, aspect,
-                   a.opts.mode, &cols, &rows);
-    } else {
-        render_fit(img_w, img_h, DEFAULT_COLS, 10000, aspect, a.opts.mode,
-                   &cols, &rows);
-    }
+    output_size(&a, img_w, img_h, have_term, term_cols, term_rows, aspect,
+                &cols, &rows);
 
     a.opts.cell_aspect = aspect;
 
@@ -409,6 +419,14 @@ int main(int argc, char **argv) {
     int64_t index = a.frame >= 0 ? a.frame : a.time > 0 ? -1 : 0;
     Frame *f = media_decode_at(m, t_us, index, cols * sub_w, rows * sub_h, err,
                                sizeof(err));
+
+    // A photo's EXIF can turn it 90 degrees: size again for its real shape
+    int shown_w, shown_h;
+    media_size(m, &shown_w, &shown_h);
+    if (f && (shown_w != img_w || shown_h != img_h)) {
+        output_size(&a, shown_w, shown_h, have_term, term_cols, term_rows,
+                    aspect, &cols, &rows);
+    }
     media_close(m);
     if (!f) {
         fprintf(stderr, "charcoal: %s: %s\n", a.input, err);
