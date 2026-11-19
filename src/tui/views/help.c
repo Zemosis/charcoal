@@ -74,7 +74,7 @@ static uint32_t blend(uint32_t a, uint32_t b) {
 // Where the box goes and how many entries fit in it
 static int rows_per_page(const App *a, Rect *box, int *logo_y) {
     int cols = a->screen->cols, rows = a->screen->rows;
-    int w = cols - 4 < 72 ? cols - 4 : 72;
+    int w = cols - 4 < 80 ? cols - 4 : 80;
     int with_logo = rows >= 16 && cols >= LOGO_W + 4;
     int top = with_logo ? 6 : 1;
     int h = rows - top - 1;
