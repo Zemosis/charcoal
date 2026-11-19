@@ -156,4 +156,8 @@ void export_ansi(const Grid *g, Buf *out);
 // Write a grid as plain text with no escape codes
 void export_txt(const Grid *g, Buf *out);
 
+// Write a grid as an HTML page: a <pre> of colored spans; fg and bg are the
+// page colors used for cells with the terminal's default colors
+void export_html(const Grid *g, Buf *out, uint32_t fg, uint32_t bg);
+
 #endif // CHARCOAL_RENDER_H
