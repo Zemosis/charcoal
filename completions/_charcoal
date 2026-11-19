@@ -1,0 +1,38 @@
+#compdef charcoal
+# zsh completion for charcoal
+
+_charcoal_themes() {
+    local dir=${XDG_CONFIG_HOME:-$HOME/.config}/charcoal/themes
+    local -a themes
+    themes=(gruvbox_dark nord tokyo_night mono tty ${dir}/*.theme(N:t:r))
+    _describe 'theme' themes
+}
+
+_charcoal() {
+    local media='*.(#i)(png|jpg|jpeg|jpe|jfif|webp|avif|gif|apng|bmp|tif|tiff|tga|pnm|ppm|pgm|pbm|qoi|jxl|heic|heif|ico|exr|dds|mp4|m4v|mkv|webm|mov|avi|flv|wmv|ogv|mpg|mpeg|ts|mts|m2ts|3gp)'
+    _arguments -s -S \
+        '(-m --mode)'{-m,--mode}'[glyph mode]:mode:(half ascii quad braille edges)' \
+        '(-p --palette)'{-p,--palette}'[characters, densest first]:palette:(standard detailed simple blocks)' \
+        '(-c --color)'{-c,--color}'[color depth]:depth:(auto true 256 16 mono)' \
+        '(-d --dither)'{-d,--dither}'[dithering]:dither:(none floyd bayer)' \
+        '--fit[how the viewer fills its panel]:fit:(contain cover stretch)' \
+        '--theme[color theme]:theme:_charcoal_themes' \
+        '(-w --width)'{-w,--width}'[output width in characters]:columns' \
+        '(-H --height)'{-H,--height}'[output height in characters]:rows' \
+        '(-i --invert)'{-i,--invert}'[flip brightness, for light terminals]' \
+        '--brightness[-1 to 1]:brightness' \
+        '--contrast[0 to 4]:contrast' \
+        '--gamma[0.1 to 5]:gamma' \
+        '--saturation[0 to 4]:saturation' \
+        '(-t --time)'{-t,--time}'[frame shown at this time]:seconds' \
+        '--frame[the N-th frame, from 0]:frame' \
+        '(--no-loop)--loop[loop animations and video]' \
+        '(--loop)--no-loop[play once]' \
+        '(-o --output)'{-o,--output}'[export target]:file:_files -g "*.(txt|ans|html)"' \
+        '(- *)'{-h,--help}'[show the usage]' \
+        '(- *)'{-V,--version}'[show the version]' \
+        '1:file or command:{_alternative "commands:command:(render export)" "files:image or video:_files -g \"$media\""}' \
+        '*:image or video:_files -g "$media"'
+}
+
+_charcoal "$@"

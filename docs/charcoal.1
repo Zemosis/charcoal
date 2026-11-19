@@ -1,0 +1,322 @@
+.TH CHARCOAL 1 2026-11-19 "charcoal 0.1.0-dev" "User Commands"
+.SH NAME
+charcoal \- terminal ASCII art viewer for images, animations and video
+.SH SYNOPSIS
+.B charcoal
+.RI [ options ]
+.br
+.B charcoal
+.I file
+.RI [ options ]
+.br
+.B charcoal
+.I folder
+.RI [ options ]
+.br
+.B charcoal render
+.I file
+.RI [ options ]
+.br
+.B charcoal export
+.I file
+.B \-o
+.I out
+.RI [ options ]
+.SH DESCRIPTION
+.B charcoal
+shows images, animated images and video as character art in the terminal,
+in a full-screen viewer with panels, live controls and playback.
+Anything FFmpeg can decode opens: PNG, JPEG, WebP, AVIF, TIFF, GIF, APNG,
+MP4, MKV, WebM and more.
+Photos are turned upright from their EXIF orientation.
+.PP
+Without a file,
+.B charcoal
+opens the file picker on the current folder.
+With a folder, it opens the folder's first image or video with the picker on
+top.
+.B render
+prints one frame to standard output and exits;
+.B export
+writes it to a
+.IR .txt ,
+.I .ans
+or
+.I .html
+file.
+When standard output is not a terminal,
+.B charcoal
+.I file
+behaves like
+.BR render .
+.SH OPTIONS
+.TP
+.BR \-m ", " \-\-mode " " \fIMODE\fR
+Glyph mode:
+.B half
+(two pixels per cell, the default),
+.BR ascii ,
+.B quad
+(four pixels per cell),
+.B braille
+(eight dots per cell) or
+.B edges
+(lines along edges over ascii).
+.TP
+.BR \-p ", " \-\-palette " " \fINAME\fR
+Characters for
+.B ascii
+and
+.BR edges ,
+densest first:
+.BR standard ,
+.B detailed
+(70 levels),
+.BR simple ,
+.BR blocks ,
+or any string of your own.
+.TP
+.BR \-c ", " \-\-color " " \fIDEPTH\fR
+.B auto
+(the default),
+.B true
+(24-bit),
+.BR 256 ,
+.B 16
+or
+.BR mono .
+.TP
+.BR \-d ", " \-\-dither " " \fIKIND\fR
+.B none
+(the default),
+.B floyd
+(Floyd-Steinberg error diffusion) or
+.B bayer
+(an ordered pattern that stays steady in video).
+.TP
+.BI \-\-fit " KIND"
+How the viewer fills its panel:
+.B contain
+(the default),
+.B cover
+or
+.BR stretch .
+.TP
+.BI \-\-theme " NAME"
+.BR gruvbox_dark ,
+.BR nord ,
+.BR tokyo_night ,
+.BR mono ,
+.BR tty ,
+or a theme file (see
+.BR THEMES ).
+.TP
+.BR \-w ", " \-\-width " " \fIN\fR
+Output width in characters
+.RB ( render
+and
+.BR export ).
+.TP
+.BR \-H ", " \-\-height " " \fIN\fR
+Output height in characters
+.RB ( render
+and
+.BR export ).
+.TP
+.BR \-i ", " \-\-invert
+Flip brightness.
+charcoal assumes a dark terminal; use this on a light one.
+.TP
+.BI \-\-brightness " N"
+\-1 to 1, 0 by default.
+.TP
+.BI \-\-contrast " N"
+0 to 4, 1 by default.
+.TP
+.BI \-\-gamma " N"
+0.1 to 5, 1 by default; higher brightens midtones.
+.TP
+.BI \-\-saturation " N"
+0 to 4, 1 by default; 0 is grayscale.
+.TP
+.BR \-t ", " \-\-time " " \fISECONDS\fR
+The frame shown at this time
+.RB ( render
+and
+.BR export ).
+.TP
+.BI \-\-frame " N"
+The
+.IR N th
+frame, counting from 0; wins over
+.BR \-\-time .
+Past the end gives the last frame.
+.TP
+.BR \-\-loop ", " \-\-no\-loop
+Loop animations and video in the viewer (the default) or not.
+.TP
+.BR \-o ", " \-\-output " " \fIFILE\fR
+Where
+.B export
+writes;
+.IR .txt ,
+.I .ans
+or
+.IR .html .
+.TP
+.BR \-h ", " \-\-help
+Show the usage.
+.TP
+.BR \-V ", " \-\-version
+Show the version and the FFmpeg and libwebp versions built in.
+.SH KEYS
+.TP
+.BR "Up" ", " "Down" " (" j ", " k )
+Pick a control.
+.TP
+.BR "Left" ", " "Right" " (" h ", " l )
+Change the picked control.
+.TP
+.BR m " " M ", " p " " P ", " c " " C ", " d ", " i ", " f
+Glyph mode, palette, color depth (next / previous), dither, invert, fit.
+.TP
+.BR b " " B ", " t " " T ", " g " " G ", " s " " S
+Brightness, contrast, gamma and saturation up / down.
+.TP
+.BR + " " \-
+Zoom in and out.
+.TP
+.BR Shift +arrows " (" H " " J " " K " " L )
+Pan when zoomed in.
+.TP
+.B r
+Reset zoom, pan and adjustments.
+.TP
+.BR n " " N
+Next / previous image or video in the folder.
+.TP
+.B O
+File picker: type to filter, Enter opens, Left or Backspace goes up.
+.TP
+.BR Space ", " , " " . ", " [ " " ] ", " { " " }
+Play / pause, step a frame, seek 5 or 30 seconds.
+.TP
+.BR < " " > ", " R ", " Home
+Playback speed, repeat, back to the start.
+.TP
+.BR 1 " to " 5
+Show or hide the viewer, info, controls, histogram and timeline panels.
+.TP
+.B e
+Export the view to
+.IR .html ,
+.I .ans
+or
+.IR .txt .
+.TP
+.BR o ", " F2
+Options, saved to the config file.
+.TP
+.BR ? ", " F1
+Every key.
+.TP
+.B Esc
+The menu (options, help, quit); it closes whatever is open first.
+.TP
+.BR q ", " Ctrl+C
+Quit.
+.TP
+.B Ctrl+Z
+Suspend to the shell;
+.B fg
+comes back.
+.TP
+.B Ctrl+R
+Reload the config file and theme.
+.PP
+The mouse works too: the wheel zooms toward the cursor or changes the
+control under it, dragging pans or scrubs the timeline, and buttons, tabs
+and lists are clickable.
+.SH FILES
+.TP
+.I ~/.config/charcoal/charcoal.conf
+Settings, written by the options overlay: lines of
+.IB key " = " value
+for
+.BR theme ,
+.BR theme_background ,
+.BR rounded ,
+.BR vim_keys ,
+.BR mouse ,
+.BR panels ,
+.BR mode ,
+.BR palette ,
+.BR fit ,
+.BR invert ,
+.BR color ,
+.BR dither ,
+.BR brightness ,
+.BR contrast ,
+.BR gamma ,
+.BR saturation ,
+.B loop
+and
+.BR max_fps .
+Command-line options override it.
+.TP
+.I ~/.config/charcoal/themes/NAME.theme
+A theme.
+.SH THEMES
+A theme file holds lines like
+.B main_bg = """#282828"""
+for the keys
+.BR main_bg ,
+.BR main_fg ,
+.BR title ,
+.BR hi_fg ,
+.BR selected_bg ,
+.BR selected_fg ,
+.BR inactive_fg ,
+.BR box_border ,
+.BR graph_low ,
+.B graph_mid
+and
+.BR graph_high .
+A color can also be
+.B default
+(the terminal's own) or a palette number from 0 to 255.
+Missing keys keep the default theme's colors.
+.SH ENVIRONMENT
+.TP
+.B COLORTERM
+.B truecolor
+or
+.B 24bit
+selects 24-bit color when the color depth is
+.BR auto .
+.TP
+.B TERM
+A name containing
+.B 256color
+selects 256 colors otherwise.
+.TP
+.B NO_COLOR
+When set, the automatic color depth is
+.BR mono .
+.TP
+.B XDG_CONFIG_HOME
+Where the
+.I charcoal
+config folder lives, instead of
+.IR ~/.config .
+.SH EXIT STATUS
+0 on success, 1 when a file cannot be opened or an option is wrong.
+.SH EXAMPLES
+.nf
+charcoal
+charcoal ~/Pictures
+charcoal clip.mp4 \-\-theme nord
+charcoal render photo.jpg \-m braille \-d floyd
+charcoal render clip.mp4 \-t 12.5 \-w 100
+charcoal export photo.jpg \-o photo.html
+.fi

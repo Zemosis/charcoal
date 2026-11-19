@@ -8,6 +8,11 @@ TARGET = charcoal
 # Install location, e.g. make install PREFIX=~/.local
 PREFIX ?= /usr/local
 BINDIR = $(DESTDIR)$(PREFIX)/bin
+DATADIR = $(DESTDIR)$(PREFIX)/share
+MANDIR = $(DATADIR)/man/man1
+BASHDIR = $(DATADIR)/bash-completion/completions
+ZSHDIR = $(DATADIR)/zsh/site-functions
+FISHDIR = $(DATADIR)/fish/vendor_completions.d
 
 # ASan + UBSan in debug builds, only when their runtimes are installed
 SAN_FLAGS := $(shell echo 'int main(void){return 0;}' | \
@@ -95,9 +100,14 @@ $(FLAGS_FILE): FORCE
 install: CFLAGS += $(RELEASE_FLAGS)
 install: $(TARGET)
 	install -Dm755 $(TARGET) $(BINDIR)/$(TARGET)
+	install -Dm644 docs/charcoal.1 $(MANDIR)/charcoal.1
+	install -Dm644 completions/charcoal.bash $(BASHDIR)/charcoal
+	install -Dm644 completions/_charcoal $(ZSHDIR)/_charcoal
+	install -Dm644 completions/charcoal.fish $(FISHDIR)/charcoal.fish
 
 uninstall:
-	rm -f $(BINDIR)/$(TARGET)
+	rm -f $(BINDIR)/$(TARGET) $(MANDIR)/charcoal.1 $(BASHDIR)/charcoal \
+	    $(ZSHDIR)/_charcoal $(FISHDIR)/charcoal.fish
 
 check-ffmpeg:
 	@pkg-config --exists $(FFMPEG_PKGS) || { \
