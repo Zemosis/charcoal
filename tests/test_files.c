@@ -18,7 +18,25 @@ static void touch(const char *dir, const char *name) {
     }
 }
 
+static void test_paths(void) {
+    char out[256];
+    setenv("HOME", "/home/me", 1);
+    path_expand("~/Pictures", out, sizeof(out));
+    CHECK_STR(out, "/home/me/Pictures");
+    path_expand("~", out, sizeof(out));
+    CHECK_STR(out, "/home/me");
+    path_expand("~other/x", out, sizeof(out));
+    CHECK_STR(out, "~other/x");
+    path_abbrev("/home/me/Pictures", out, sizeof(out));
+    CHECK_STR(out, "~/Pictures");
+    path_abbrev("/home/meow/x", out, sizeof(out));
+    CHECK_STR(out, "/home/meow/x");
+    CHECK_INT(path_is_dir("/"), 1);
+    CHECK_INT(path_is_dir("/nonexistent-charcoal-dir"), 0);
+}
+
 void test_files(void) {
+    test_paths();
     CHECK(is_media_name("a.JPG"));
     CHECK(is_media_name("clip.webm"));
     CHECK(!is_media_name("notes.txt"));

@@ -69,6 +69,7 @@ static void test_round_trip(void) {
     a.loop = 0;
     a.rounded = 0;
     a.panels[3] = 0;
+    snprintf(a.export_dir, sizeof(a.export_dir), "~/Pictures/art");
 
     Buf out;
     buf_init(&out);
@@ -87,6 +88,7 @@ static void test_round_trip(void) {
     CHECK_INT(b.rounded, 0);
     CHECK_INT(b.panels[3], 0);
     CHECK_INT(b.panels[4], 1);
+    CHECK_STR(b.export_dir, "~/Pictures/art");
     buf_free(&out);
 }
 
