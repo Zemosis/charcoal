@@ -146,6 +146,12 @@ static int apply(Config *c, const char *key, const char *v) {
         return parse_bool(v, &c->vim_keys);
     } else if (strcmp(key, "mouse") == 0) {
         return parse_bool(v, &c->mouse);
+    } else if (strcmp(key, "export_dir") == 0) {
+        if (strlen(v) >= sizeof(c->export_dir)) {
+            return -1;
+        }
+        snprintf(c->export_dir, sizeof(c->export_dir), "%s", v);
+        return 0;
     } else if (strcmp(key, "panels") == 0) {
         return parse_panels(v, c->panels);
     } else if (strcmp(key, "mode") == 0) {
@@ -266,7 +272,7 @@ void config_parse(const char *text, Config *c, char *warn, int warn_len) {
 }
 
 static void put_line(Buf *out, const char *key, const char *value, int quote) {
-    char line[384];
+    char line[1200];
     snprintf(line, sizeof(line), quote ? "%-17s= \"%s\"\n" : "%-17s= %s\n", key,
              value);
     buf_puts(out, line);
@@ -296,6 +302,7 @@ void config_write(const Config *c, Buf *out) {
         }
     }
     put_line(out, "panels", panels, 1);
+    put_line(out, "export_dir", c->export_dir, 1);
     buf_putc(out, '\n');
     put_line(out, "mode", glyph_mode_name(c->mode), 1);
     put_line(out, "palette", c->palette, 1);

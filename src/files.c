@@ -216,3 +216,28 @@ void format_size(long long bytes, char *out, int n) {
     }
     snprintf(out, (size_t)n, v < 10 ? "%.1f%c" : "%.0f%c", v, units[u]);
 }
+
+void path_expand(const char *path, char *out, int n) {
+    const char *home = getenv("HOME");
+    if (home && home[0] && path[0] == '~' && (path[1] == '/' || !path[1])) {
+        snprintf(out, (size_t)n, "%s%s", home, path + 1);
+    } else {
+        snprintf(out, (size_t)n, "%s", path);
+    }
+}
+
+void path_abbrev(const char *path, char *out, int n) {
+    const char *home = getenv("HOME");
+    size_t len = home ? strlen(home) : 0;
+    if (len > 1 && strncmp(path, home, len) == 0 &&
+        (path[len] == '/' || !path[len])) {
+        snprintf(out, (size_t)n, "~%s", path + len);
+    } else {
+        snprintf(out, (size_t)n, "%s", path);
+    }
+}
+
+int path_is_dir(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}

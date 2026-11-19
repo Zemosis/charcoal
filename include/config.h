@@ -26,6 +26,7 @@ typedef struct Config {
     int mouse;              // clicks, wheel and drags in the viewer
     int panels[CONFIG_PANELS];  // viewer, info, controls, histogram,
                                 // timeline: shown or not
+    char export_dir[1024];  // where e saved last; empty = where charcoal runs
 
     // Render defaults
     GlyphMode mode;

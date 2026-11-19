@@ -32,6 +32,15 @@ int files_compare(const char *a, const char *b);
 void path_dir(const char *path, char *out, int n);
 const char *path_name(const char *path);
 
+// "~" or "~/x" becomes $HOME/x; anything else is copied as it is
+void path_expand(const char *path, char *out, int n);
+
+// $HOME/x becomes ~/x, for showing paths
+void path_abbrev(const char *path, char *out, int n);
+
+// 1 when path is a folder that exists
+int path_is_dir(const char *path);
+
 // The media file dir media files away from path in its folder, wrapping
 // around; fills out, and the new position and count (1-based). Returns 0,
 // or -1 when the folder has no media files
