@@ -197,7 +197,8 @@ typedef struct App {
 // Run the viewer on a file until the user quits, returns the exit code
 // opts, fit and loop are this run's settings (config plus command line);
 // config is what the options overlay edits and saves; warn is shown first;
-// picker opens the file picker on top, for charcoal <folder>
+// picker opens the file picker on top, for charcoal <folder>; a NULL path
+// starts with no file and the picker on the current folder
 int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
             const Config *config, ColorDepth ui_depth, const char *warn,
             int picker);

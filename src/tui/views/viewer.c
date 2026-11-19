@@ -49,8 +49,8 @@ void viewer_update(App *a) {
     if (a->compact) {
         in = a->r_viewer;
     }
-    if (in.w < 1 || in.h < 1) {
-        return;
+    if (in.w < 1 || in.h < 1 || a->src_w < 1 || a->src_h < 1) {
+        return;     // nothing open yet
     }
     double t0 = now_ms();
 
@@ -171,6 +171,23 @@ void view_viewer(App *a) {
     if (a->art) {
         draw_grid(a->screen, a->art, a->art_x, a->art_y, t);
     }
+    if (!a->path[0]) {
+        // Started without a file: say how to get one
+        Rect in = rect_inner(r);
+        const char *lines[3] = {"No file open", "O  open a file",
+                                "n  the first one here"};
+        for (int i = 0; i < 3; i++) {
+            int w = text_width(lines[i]);
+            int y = in.y + in.h / 2 - 1 + i + (i > 0);
+            int x = in.x + (in.w - (i ? 21 : w)) / 2;
+            draw_text(a->screen, x, y, in.w, lines[i],
+                      i ? t->main_fg : t->title, t->main_bg, i ? 0 : ATTR_BOLD);
+            if (i) {
+                draw_text(a->screen, x, y, 1, lines[i], t->hi_fg, t->main_bg,
+                          ATTR_BOLD);
+            }
+        }
+    }
 
     // File name at the right of the top border, note at the bottom
     // "name  3/12" when the folder has more to flip through with n / N
@@ -183,7 +200,7 @@ void view_viewer(App *a) {
     }
     int name_w = text_width(named);
     int max_name = r.w - 16;
-    if (max_name > 4) {
+    if (max_name > 4 && a->name[0]) {
         char shown[320];
         if (name_w > max_name) {
             // Keep the end of long names, where the extension is

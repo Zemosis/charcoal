@@ -62,6 +62,7 @@ static void usage(FILE *out) {
         "charcoal %s - terminal ASCII art viewer\n"
         "\n"
         "Usage:\n"
+        "  charcoal [options]                        pick a file to view\n"
         "  charcoal <file> [options]                 open the viewer\n"
         "  charcoal <folder> [options]               browse a folder\n"
         "  charcoal render <file> [options]          print once and exit\n"
@@ -299,7 +300,9 @@ static int parse_args(int argc, char **argv, Args *a) {
         }
     }
 
-    if (!a->input) {
+    // Plain "charcoal" in a terminal opens the viewer on the file picker
+    if (!a->input && (a->cmd != CMD_VIEW || !isatty(STDIN_FILENO) ||
+                      !isatty(STDOUT_FILENO))) {
         usage(stderr);
         return -1;
     }
@@ -382,7 +385,9 @@ int main(int argc, char **argv) {
     }
     // A folder opens its first image or video, with the picker on top
     char first[4400];
-    int folder = stat(a.input, &st) == 0 && S_ISDIR(st.st_mode);
+    // A folder with none starts on the picker there, to go up or elsewhere
+    const char *start = a.input;
+    int folder = a.input && stat(a.input, &st) == 0 && S_ISDIR(st.st_mode);
     if (folder) {
         FileList list;
         if (!viewer) {
@@ -390,12 +395,10 @@ int main(int argc, char **argv) {
                     "a file\n", a.input);
             return 1;
         }
-        if (files_list(a.input, 0, &list) != 0 || list.count == 0) {
-            fprintf(stderr, "charcoal: no images or videos in %s\n", a.input);
-            files_free(&list);
-            return 1;
+        if (files_list(a.input, 0, &list) == 0 && list.count > 0) {
+            snprintf(first, sizeof(first), "%s/%s", a.input, list.items[0].name);
+            start = first;
         }
-        snprintf(first, sizeof(first), "%s/%s", a.input, list.items[0].name);
         files_free(&list);
     }
 
@@ -405,8 +408,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "charcoal: -w and -H are for render and export\n");
             return 1;
         }
-        return app_run(folder ? first : a.input, &a.opts, a.fit, a.loop,
-                       &a.config, detect_color(), a.warn, folder);
+        return app_run(start, &a.opts, a.fit, a.loop, &a.config, detect_color(),
+                       a.warn, folder);
     }
 
     char err[512];

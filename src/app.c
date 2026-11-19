@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -1088,15 +1089,22 @@ int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
         a.show[i] = 1;
     }
 
+    // No path, or a folder without media: start empty on the file picker
     char err[480];
-    if (app_load(&a, path, err, sizeof(err)) != 0) {
+    struct stat st;
+    int is_dir = path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+    if (path && !is_dir && app_load(&a, path, err, sizeof(err)) != 0) {
         fprintf(stderr, "charcoal: %s\n", err);
         app_free(&a);
         return 1;
     }
-    if (picker) {
-        char dir[4096];
-        path_dir(path, dir, sizeof(dir));
+    if (picker || !path || is_dir) {
+        char dir[4096] = ".";
+        if (is_dir) {
+            snprintf(dir, sizeof(dir), "%s", path);
+        } else if (path) {
+            path_dir(path, dir, sizeof(dir));
+        }
         picker_open(&a, dir);
     }
 

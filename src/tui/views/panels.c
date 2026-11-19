@@ -147,6 +147,10 @@ void view_info(App *a) {
     draw_box(a->screen, r, a->theme, 2, "info");
     Rect in = rect_inner(r);
     char v[64];
+    if (!a->path[0]) {
+        info_row(a, in, 0, "file", "none");
+        return;
+    }
     info_row(a, in, 0, "file", a->name);
     info_row(a, in, 1, "codec", a->codec);
     if (a->kind == MEDIA_VIDEO && a->fps > 0) {
