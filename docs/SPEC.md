@@ -177,9 +177,10 @@ Palettes are listed densest first, as in ascii_art:
 - **true**: 24-bit `38;2;r;g;b` / `48;2;r;g;b`
 - **256**: nearest xterm-256 color (6×6×6 cube + 24 grays; indices 0–15 are
   skipped because terminals theme them), written as `38;5;n`
-- **16**: nearest of the 16 ANSI colors, written as `30–37` / `90–97`. Until
-  themes (M5) or a terminal query (OSC 4) supply the real values, xterm's
-  defaults are used.
+- **16**: nearest of the 16 ANSI colors, written as `30–37` / `90–97`. The
+  viewer asks the terminal for its real 16 colors at start (`OSC 4`, answered
+  by Ghostty, tmux and most terminals) and matches against those; `render`,
+  `export` and terminals that do not answer use xterm's defaults.
 - **mono**: no color; the glyph alone carries brightness
 
 "Nearest" is measured in OKLab, where distance follows how different two
@@ -372,6 +373,10 @@ tests always match the screen.
   terminal supports it, to avoid tearing during video.
 - One `write()` per frame from a growable output buffer, never `printf` per
   character.
+- Wide characters (East Asian, emoji; `cp_width`, a built-in table so the
+  locale does not matter) take two cells: the second holds a tail marker,
+  and the diff writes the pair as one. Drawing over the right half of a wide
+  character redraws its left half too. Zero-width marks are dropped.
 - Flow control with `ESC [5n` status requests during redraws (decision 14).
 
 ### 6.5 Themes
@@ -463,6 +468,7 @@ saturation       = 1
 
 loop             = true
 max_fps          = 0               # 0 = every frame
+panels           = "viewer info controls histogram timeline"
 ```
 
 The options overlay writes this file (through a temporary file and a
@@ -474,7 +480,7 @@ on stderr for `render`/`export` and in the viewer's border otherwise.
 `Ctrl+R` reloads the theme and general settings. Golden tests point
 `XDG_CONFIG_HOME` elsewhere so a user's config cannot change them.
 
-Panel visibility is not saved yet (`1`–`5` are per session).
+`1`–`5` save which panels are shown (`panels`).
 
 ---
 
@@ -576,7 +582,10 @@ charcoal is an installed command-line tool used like `btop`: it runs as
 Make targets: `make` (debug, `-g -O0`, plus `-fsanitize=address,undefined`
 when the runtimes are installed), `make release` (`-O2`), `make test`,
 `make golden`, `make install` / `make uninstall` (`PREFIX`, default
-`/usr/local`, and `DESTDIR` for packaging), `make clean`. Header dependencies
+`/usr/local`, and `DESTDIR` for packaging), `make clean`. Install also puts
+the man page (`docs/charcoal.1`) in `share/man/man1` and the shell
+completions (`completions/`) in `share/bash-completion/completions`,
+`share/zsh/site-functions` and `share/fish/vendor_completions.d`. Header dependencies
 (`-MMD -MP`) and flag-change rebuilds are carried over from the ascii_art
 Makefile fix.
 
@@ -588,6 +597,9 @@ include guards in headers.
 
 ## 12. Performance targets
 
+- Big stills (over 2 MP) keep a copy shrunk to about twice what the screen
+  can show in braille; views resize from it unless zoomed past it. A mode
+  switch on a 10 MP photo went from 24–31 ms to 3–6 ms.
 - Still image: under 50 ms to decode and render a 12 MP JPEG. This excludes
   process startup: Fedora's FFmpeg pulls in ~240 shared libraries, which costs
   ~50 ms before `main` runs.
@@ -686,3 +698,8 @@ Resolved 2026-11-18:
     for now: as an animated image it is 9-24 MB.
 26. **Plain `charcoal` opens the file picker**, like other CLI tools that
     start without arguments, and the viewer has an empty state.
+27. **The terminal's real 16 colors** via `OSC 4` (see 5.5).
+28. **Panel visibility is saved** in the config (`panels`).
+29. **Big stills get a working copy** for fast setting changes (see 12).
+30. **Wide characters** take two cells (see 6.4).
+31. **A man page and bash / zsh / fish completions** are installed.

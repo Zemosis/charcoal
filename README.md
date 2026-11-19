@@ -150,6 +150,10 @@ make install PREFIX=~/.local         # ~/.local/bin/charcoal, no sudo
 make uninstall                       # same PREFIX as install
 ```
 
+This also installs the man page (`man charcoal`) and tab completion for bash,
+zsh and fish. For zsh with `PREFIX=~/.local`, add
+`fpath=(~/.local/share/zsh/site-functions $fpath)` before `compinit`.
+
 ## Usage
 
 ```bash
@@ -189,7 +193,8 @@ and lists are clickable.
 ## Configuration
 
 Press `o` in the viewer for the options; they are saved to
-`~/.config/charcoal/charcoal.conf`. Themes: `gruvbox_dark` (default), `nord`,
+`~/.config/charcoal/charcoal.conf`, as are the panels shown with `1`–`5`.
+Themes: `gruvbox_dark` (default), `nord`,
 `tokyo_night`, `mono`, `tty`, or your own
 `~/.config/charcoal/themes/<name>.theme` with lines like
 `main_bg = "#282828"` (keys: `main_bg`, `main_fg`, `title`, `hi_fg`,
