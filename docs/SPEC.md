@@ -489,9 +489,9 @@ on stderr for `render`/`export` and in the viewer's border otherwise.
 
 | Extension | Content |
 |---|---|
-| `.txt` | Plain characters, no color |
-| `.ans` | Characters + ANSI escape codes (shown by `cat`) |
-| `.html` | A page with a `<pre>` of inline-styled spans (one per run of equal colors), `line-height: 1` so half blocks join up, the theme's colors for default cells |
+| `.txt` | Plain characters, no color; how tall its lines are is up to the editor, so it only looks right in `ascii`, `braille` and `edges` |
+| `.ans` | Characters + ANSI escape codes; `cat` in a terminal shows exactly the view |
+| `.html` | A page laid out like the terminal: each row is a div `cell_aspect` ch tall (the viewer's measured aspect, or the terminal's for `charcoal export`), runs of equal colors are inline-block spans, other non-ASCII characters sit in 1ch boxes so a wider fallback font (braille often comes from one) cannot stretch columns, and block characters (`▀ ▄ ▌ ▚ █` …) are painted with CSS backgrounds so they fill their cell as terminals draw them, the character kept invisible for copying. The art is sized to fit the window. Default cells and the page take the theme's colors, or the terminal's own where the theme leaves them to it (`theme_background = false`, the `tty` theme): the viewer asks the terminal for them (`OSC 10` / `OSC 11`) at start, along with the 16 colors; `charcoal export` cannot ask, so it falls back to gruvbox's |
 
 Video export writes one frame (`--frame` / `--time`); in the viewer, `e`
 exports exactly what is on screen. Exporting a whole video is out of scope
@@ -707,3 +707,8 @@ Resolved 2026-11-18:
 32. **The export folder is chosen, not typed**: the dialog has a Folder
     field with a browse button that reuses the file picker, and remembers
     the last folder (`export_dir`).
+33. **HTML export copies the terminal's cell shape**: the first version used
+    `line-height: 1`, which squashed the art to about 1.4:1 cells (terminals
+    are about 2:1) and let fallback braille fonts widen the columns.
+34. **Exported pages use the terminal's own background** when the theme
+    keeps the terminal's (asked with `OSC 11`, like the palette).
