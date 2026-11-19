@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define SIDE_W 30
 #define INFO_H 11
@@ -49,6 +50,7 @@ static void handle_key(App *a, int key);
 static void handle_resize(App *a);
 static void start_export(App *a);
 static void finish_export(App *a);
+static void end_export(App *a);
 static int prompt_key(App *a, int key);
 static void reload_config(App *a);
 
@@ -67,8 +69,9 @@ static int app_load(App *a, const char *path) {
         return -1;
     }
     snprintf(a->codec, sizeof(a->codec), "%s", media_codec_name(m));
-    media_size(m, &a->src_w, &a->src_h);
     a->frame = media_decode_first(m, 0, 0, err, sizeof(err));
+    // After decoding: a photo's EXIF may have turned it
+    media_size(m, &a->src_w, &a->src_h);
     a->kind = media_kind(m);
     a->duration_us = media_duration_us(m);
     a->fps = media_fps(m);
@@ -95,6 +98,7 @@ static int app_load(App *a, const char *path) {
 
 static void app_free(App *a) {
     player_close(a->player);
+    grid_free(a->export_art);
     frame_free(a->frame);
     grid_free(a->art);
     screen_free(a->screen);
@@ -186,6 +190,8 @@ static void draw(App *a) {
         view_help(a);
     } else if (a->overlay == OVERLAY_OPTIONS) {
         view_options(a);
+    } else if (a->overlay == OVERLAY_MENU) {
+        view_menu(a);
     } else {
         if (a->show[PANEL_VIEWER] || a->compact) {
             view_viewer(a);
@@ -197,6 +203,9 @@ static void draw(App *a) {
             view_timeline(a);
         }
         view_status(a);
+        if (a->prompting) {
+            view_export(a);
+        }
     }
     Buf out;
     buf_init(&out);
@@ -411,6 +420,20 @@ static void handle_key(App *a, int key) {
         return;
     }
     a->message[0] = '\0';
+    if (a->overlay == OVERLAY_MENU) {
+        int pick = key == KEY_CTRL_C ? MENU_QUIT : menu_key(a, key);
+        if (pick == MENU_CLOSE) {
+            a->overlay = OVERLAY_NONE;
+        } else if (pick == MENU_OPTIONS) {
+            a->overlay = OVERLAY_OPTIONS;
+        } else if (pick == MENU_HELP) {
+            a->overlay = OVERLAY_HELP;
+            a->help_page = 0;
+        } else if (pick == MENU_QUIT) {
+            a->running = 0;
+        }
+        return;
+    }
     if (a->overlay == OVERLAY_OPTIONS) {
         if (key == KEY_CTRL_C) {
             a->running = 0;
@@ -436,6 +459,11 @@ static void handle_key(App *a, int key) {
     case 'q':
     case KEY_CTRL_C:
         a->running = 0;
+        break;
+    case KEY_ESC:
+        // Esc closes whatever is open first; with nothing open, the menu
+        a->overlay = OVERLAY_MENU;
+        a->menu_sel = 0;
         break;
     case KEY_CTRL_Z: {
         // Time spent stopped does not count as playback
@@ -577,25 +605,54 @@ static void start_export(App *a) {
         *dot = '\0';
     }
     snprintf(a->prompt, sizeof(a->prompt), "%s.html", stem);
+
+    // Keep the view as it is now, and hold playback while typing
+    grid_free(a->export_art);
+    a->export_art = NULL;
+    if (a->art) {
+        a->export_art = grid_new(a->art->cols, a->art->rows);
+        if (a->export_art) {
+            memcpy(a->export_art->cells, a->art->cells,
+                   sizeof(Cell) * (size_t)a->art->cols * (size_t)a->art->rows);
+        }
+    }
+    a->export_resume = a->playing;
+    if (a->playing) {
+        clock_set(a, clock_now(a));
+        a->playing = 0;
+    }
     a->prompting = 1;
+}
+
+// Close the dialog, playing on if it was playing before
+static void end_export(App *a) {
+    a->prompting = 0;
+    grid_free(a->export_art);
+    a->export_art = NULL;
+    if (a->export_resume) {
+        clock_set(a, clock_now(a));
+        a->playing = 1;
+        a->export_resume = 0;
+    }
 }
 
 // Write the art on screen in the format the file name asks for
 static void finish_export(App *a) {
     const char *name = a->prompt;
     size_t n = strlen(name);
+    const Grid *art = a->export_art;
     Buf out;
     buf_init(&out);
-    if (!a->art) {
+    if (!art) {
         snprintf(a->message, sizeof(a->message), "nothing to export yet");
         return;
     }
     if (n > 5 && strcmp(name + n - 5, ".html") == 0) {
-        export_html(a->art, &out, a->theme->main_fg, a->theme->main_bg);
+        export_html(art, &out, a->theme->main_fg, a->theme->main_bg);
     } else if (n > 4 && strcmp(name + n - 4, ".ans") == 0) {
-        export_ansi(a->art, &out);
+        export_ansi(art, &out);
     } else if (n > 4 && strcmp(name + n - 4, ".txt") == 0) {
-        export_txt(a->art, &out);
+        export_txt(art, &out);
     } else {
         snprintf(a->message, sizeof(a->message), "use .html, .ans or .txt");
         buf_free(&out);
@@ -607,20 +664,26 @@ static void finish_export(App *a) {
         ok = 0;
     }
     buf_free(&out);
-    snprintf(a->message, sizeof(a->message), ok ? "saved %s" : "cannot write %s",
-             name);
+    char cwd[200];
+    if (name[0] != '/' && getcwd(cwd, sizeof(cwd))) {
+        snprintf(a->message, sizeof(a->message),
+                 ok ? "saved %s/%s" : "cannot write %s/%s", cwd, name);
+    } else {
+        snprintf(a->message, sizeof(a->message),
+                 ok ? "saved %s" : "cannot write %s", name);
+    }
 }
 
 // Typing into the export prompt, returns 1 when the key was used
 static int prompt_key(App *a, int key) {
     size_t len = strlen(a->prompt);
     if (key == KEY_ENTER) {
-        a->prompting = 0;
         if (len) {
             finish_export(a);
         }
+        end_export(a);
     } else if (key == KEY_ESC || key == KEY_CTRL_C) {
-        a->prompting = 0;
+        end_export(a);
     } else if (key == KEY_BACKSPACE) {
         // Remove the last whole UTF-8 character
         while (len > 0 && ((unsigned char)a->prompt[len - 1] & 0xC0) == 0x80) {

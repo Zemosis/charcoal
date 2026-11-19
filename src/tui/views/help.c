@@ -22,7 +22,7 @@ typedef struct HelpEntry {
 static const HelpEntry ENTRIES[] = {
     {"q, Ctrl+C", NULL, "Quit."},
     {"?, F1, h", "?, F1", "Show this window."},
-    {"Esc", NULL, "Close this window."},
+    {"Esc", NULL, "Menu (options, help, quit); closes any open window."},
     {"o, F2", NULL, "Options (saved to ~/.config/charcoal)."},
     {"1 - 5", NULL, "Toggle viewer, info, controls, histogram, timeline."},
     {"Up, Down", "Up, Down, j, k", "Select a control."},

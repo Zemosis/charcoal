@@ -11,6 +11,8 @@ void view_histogram(App *a) {
     }
     const Theme *t = a->theme;
     draw_box(a->screen, r, t, 4, "histogram");
+    // y: how many pixels have that brightness (relative, square-root scale)
+    draw_border_label(a->screen, r.x + r.w - 10, r.y, "pixels", NULL, t);
     draw_border_label(a->screen, r.x + 2, r.y + r.h - 1, "dark", NULL, t);
     draw_border_label(a->screen, r.x + r.w - 9, r.y + r.h - 1, "light", NULL, t);
     Rect in = rect_inner(r);

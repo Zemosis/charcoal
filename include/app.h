@@ -23,8 +23,18 @@ typedef enum Panel {
 typedef enum Overlay {
     OVERLAY_NONE,
     OVERLAY_HELP,
-    OVERLAY_OPTIONS
+    OVERLAY_OPTIONS,
+    OVERLAY_MENU
 } Overlay;
+
+// Esc menu entries; menu_key also returns MENU_CLOSE or -1 (stay open)
+enum {
+    MENU_OPTIONS,
+    MENU_HELP,
+    MENU_QUIT,
+    MENU_COUNT,
+    MENU_CLOSE = 100
+};
 
 #define MAX_THEMES 64
 
@@ -113,8 +123,11 @@ typedef struct App {
     int help_page;
     int opt_tab;                // options overlay: tab and selected row
     int opt_sel;
+    int menu_sel;
     int prompting;              // typing a file name to export to
     char prompt[256];
+    Grid *export_art;           // the view when e was pressed
+    int export_resume;          // playback was on before the dialog
     char message[256];          // one-off note shown in the viewer border
     int running;
 
@@ -148,6 +161,11 @@ void view_help(App *a);
 void view_timeline(App *a);
 void view_histogram(App *a);
 void view_options(App *a);
+void view_menu(App *a);
+void view_export(App *a);
+
+// Esc menu: handle a key, returns a MENU_* entry, MENU_CLOSE, or -1
+int menu_key(App *a, int key);
 
 // The charcoal logo and version, centered, 4 rows from y
 void view_logo(App *a, int y);

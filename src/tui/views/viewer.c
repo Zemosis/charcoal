@@ -188,11 +188,7 @@ void view_viewer(App *a) {
         draw_border_label(a->screen, r.x + r.w - 2 - text_width(shown) - 2, r.y,
                           shown, NULL, t);
     }
-    if (a->prompting) {
-        char label[300];
-        snprintf(label, sizeof(label), "export as: %s\u2588", a->prompt);
-        draw_border_label(a->screen, r.x + 2, r.y + r.h - 1, label, NULL, t);
-    } else if (a->message[0]) {
+    if (a->message[0]) {
         draw_border_label(a->screen, r.x + 2, r.y + r.h - 1, a->message, NULL, t);
     }
 }

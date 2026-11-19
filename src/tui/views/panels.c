@@ -245,11 +245,7 @@ void view_status(App *a) {
     draw_fill(a->screen, r, t->main_fg, t->main_bg);
     int n = draw_text(a->screen, r.x, r.y, r.w, line, t->inactive_fg,
                       t->main_bg, 0);
-    char prompt[300];
-    snprintf(prompt, sizeof(prompt), "export as: %s\u2588", a->prompt);
-    const char *hint = a->prompting     ? prompt
-                     : a->message[0] ? a->message
-                                     : "? help";
+    const char *hint = a->message[0] ? a->message : "? help";
     int hw = text_width(hint);
     if (r.w - n > hw + 1) {
         draw_text(a->screen, r.x + r.w - hw - 1, r.y, hw, hint, t->hi_fg,
