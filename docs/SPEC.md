@@ -38,6 +38,7 @@ theme — plus many more input formats and rendering modes.
 ## 3. Usage
 
 ```
+charcoal                        open the viewer on the file picker (current folder)
 charcoal <file>                 open the interactive viewer (TUI)
 charcoal <folder>               open its first image or video, picker on top
 charcoal render <file> [opts]   print once to stdout and exit (no TUI)
@@ -350,8 +351,12 @@ tests always match the screen.
   "contains"); `Enter` / `→` open, `←` / `Backspace` (with an empty filter)
   go up and select the folder you came from, `Esc` clears the filter, then
   closes. Arrows, `PgUp` / `PgDn`, `Home` / `End` move.
-- `charcoal <folder>` opens its first media file with the picker on top;
-  `render` / `export` still take a file.
+- `charcoal <folder>` opens its first media file with the picker on top; a
+  folder without any opens the picker there.
+- Plain `charcoal` (in a terminal) starts with no file and the picker on the
+  current folder. Closing the picker leaves an empty viewer that says how to
+  open something (`O`, or `n` for the first file here). Without a terminal it
+  prints the usage, and `render` / `export` still take a file.
 
 ### 6.4 Terminal handling
 
@@ -679,3 +684,5 @@ Resolved 2026-11-18:
 25. **README screenshots** are real Ghostty screenshots (gruvbox_dark),
     cropped to the window, in `docs/screenshots/`. A demo video was left out
     for now: as an animated image it is 9-24 MB.
+26. **Plain `charcoal` opens the file picker**, like other CLI tools that
+    start without arguments, and the viewer has an empty state.

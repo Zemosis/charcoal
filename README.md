@@ -153,6 +153,7 @@ make uninstall                       # same PREFIX as install
 ## Usage
 
 ```bash
+charcoal                                 # pick a file in this folder
 charcoal photo.jpg                       # interactive viewer (? for help)
 charcoal ~/Pictures                      # browse a folder (n / N, O)
 charcoal clip.mp4                        # plays, with a timeline
