@@ -37,7 +37,8 @@ enum {
     KEY_F2,
     KEY_BACKTAB,        // Shift+Tab
     KEY_TERM_OK,        // the terminal answered a status request (ESC [5n)
-    KEY_MOUSE           // a mouse event; term_mouse says which
+    KEY_MOUSE,          // a mouse event; term_mouse says which
+    KEY_PALETTE         // the terminal said what a palette color is
 };
 
 // Mouse buttons as terminals report them
@@ -140,6 +141,12 @@ void term_set_mouse(int on);
 // The event behind the last KEY_MOUSE
 void term_mouse(MouseEvent *ev);
 
+// Ask the terminal for its 16 colors (OSC 4); each reply is a KEY_PALETTE
+void term_query_palette(void);
+
+// The color behind the last KEY_PALETTE
+void term_palette(int *index, uint32_t *rgb);
+
 // Whether (x, y) falls inside r
 int rect_contains(Rect r, int x, int y);
 
@@ -174,8 +181,15 @@ void draw_fill(Screen *s, Rect r, uint32_t fg, uint32_t bg);
 int draw_text(Screen *s, int x, int y, int max_w, const char *text,
               uint32_t fg, uint32_t bg, uint8_t attr);
 
-// Text width in cells (one per code point; no wide characters yet)
+// Cells a code point takes: 2 for East Asian wide characters and emoji,
+// 0 for combining marks and other zero-width ones, else 1
+int cp_width(uint32_t cp);
+
+// Text width in cells
 int text_width(const char *text);
+
+// A wide character's second cell holds this, so diffs treat the pair as one
+#define CELL_WIDE_TAIL 0
 
 // Rounded box with "¹title" in the top border, btop style
 void draw_box(Screen *s, Rect r, const Theme *t, int hotkey,

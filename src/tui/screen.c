@@ -213,6 +213,17 @@ void screen_flush(Screen *s, Buf *out) {
         buf_puts(out, "\033[0m\033[2J");
     }
 
+    // Writing over the right half of a wide character on screen erases the
+    // whole character, so its left half must be redrawn too
+    if (!s->full) {
+        for (int i = 1; i < s->cols * s->rows; i++) {
+            if (s->front[i].ch == CELL_WIDE_TAIL && i % s->cols > 0 &&
+                !cell_same(&s->front[i], &s->back[i], 0)) {
+                s->front[i - 1].ch = UINT32_MAX;
+            }
+        }
+    }
+
     int cx = -1, cy = -1;
     int have = 0;
     Cell style = {0};
@@ -220,7 +231,21 @@ void screen_flush(Screen *s, Buf *out) {
         for (int x = 0; x < s->cols; x++) {
             int i = y * s->cols + x;
             Cell *b = &s->back[i];
-            if (!s->full && cell_same(&s->front[i], b, s->tolerance)) {
+
+            // A wide character and its tail cell go out as one: the tail is
+            // written with its head, and a head without a tail (or a tail
+            // without a head) became a space when something drew over it
+            int wide = b->ch != CELL_WIDE_TAIL && cp_width(b->ch) == 2;
+            int tail_ok = wide && x + 1 < s->cols &&
+                          s->back[i + 1].ch == CELL_WIDE_TAIL;
+            if (b->ch == CELL_WIDE_TAIL && x > 0 && s->back[i - 1].ch &&
+                cp_width(s->back[i - 1].ch) == 2) {
+                continue;
+            }
+            int dirty = s->full || !cell_same(&s->front[i], b, s->tolerance) ||
+                        (tail_ok && !cell_same(&s->front[i + 1], &s->back[i + 1],
+                                               0));
+            if (!dirty) {
                 continue;
             }
             if (cx != x || cy != y) {
@@ -228,9 +253,14 @@ void screen_flush(Screen *s, Buf *out) {
             }
             put_style(out, b, &style, have, s->depth);
             have = 1;
-            buf_utf8(out, b->ch < 0x20 ? ' ' : b->ch);
+            uint32_t ch = b->ch < 0x20 || (wide && !tail_ok) ? ' ' : b->ch;
+            buf_utf8(out, ch);
             s->front[i] = *b;
             cx = x + 1;
+            if (tail_ok) {
+                s->front[i + 1] = s->back[i + 1];
+                cx = x + 2;
+            }
             cy = y;
         }
     }
