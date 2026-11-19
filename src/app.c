@@ -8,6 +8,8 @@
 
 #define SIDE_W 30
 #define INFO_H 11
+#define CONTROLS_H (CTL_COUNT + 2)
+#define MIN_HISTOGRAM_H 5
 #define TIMELINE_H 3
 #define MIN_COLS 80
 #define MIN_ROWS 24
@@ -45,6 +47,10 @@ static void set_speed(App *a, int dir);
 static int handle_playback_key(App *a, int key);
 static void handle_key(App *a, int key);
 static void handle_resize(App *a);
+static void start_export(App *a);
+static void finish_export(App *a);
+static int prompt_key(App *a, int key);
+static void reload_config(App *a);
 
 static double now_ms(void) {
     struct timespec t;
@@ -101,7 +107,7 @@ static void layout(App *a) {
     int cols = a->screen->cols, rows = a->screen->rows;
     Rect none = {0, 0, 0, 0};
     a->r_viewer = a->r_info = a->r_controls = a->r_status = none;
-    a->r_timeline = none;
+    a->r_timeline = a->r_histogram = none;
     a->compact = cols < MIN_COLS || rows < MIN_ROWS;
     a->dirty = 1;
 
@@ -118,7 +124,8 @@ static void layout(App *a) {
         rows -= TIMELINE_H;
     }
 
-    int side = a->show[PANEL_INFO] || a->show[PANEL_CONTROLS];
+    int side = a->show[PANEL_INFO] || a->show[PANEL_CONTROLS] ||
+               a->show[PANEL_HISTOGRAM];
     int side_x = 0, side_w = cols;
     if (a->show[PANEL_VIEWER]) {
         int vw = side ? cols - SIDE_W : cols;
@@ -130,15 +137,25 @@ static void layout(App *a) {
         return;
     }
 
-    // Info on top, controls take the rest of the column
+    // Info on top, then controls, then the histogram takes what is left;
+    // whichever panel is last stretches to the bottom
     int y = 0;
+    int below = a->show[PANEL_CONTROLS] || a->show[PANEL_HISTOGRAM];
     if (a->show[PANEL_INFO]) {
-        int h = a->show[PANEL_CONTROLS] ? INFO_H : rows;
+        int h = below ? INFO_H : rows;
         a->r_info = (Rect){side_x, 0, side_w, h};
         y = h;
     }
     if (a->show[PANEL_CONTROLS]) {
-        a->r_controls = (Rect){side_x, y, side_w, rows - y};
+        int h = rows - y;
+        if (a->show[PANEL_HISTOGRAM] && h - CONTROLS_H >= MIN_HISTOGRAM_H) {
+            h = CONTROLS_H;
+        }
+        a->r_controls = (Rect){side_x, y, side_w, h};
+        y += h;
+    }
+    if (a->show[PANEL_HISTOGRAM] && rows - y >= MIN_HISTOGRAM_H) {
+        a->r_histogram = (Rect){side_x, y, side_w, rows - y};
     }
 }
 
@@ -152,6 +169,14 @@ static void draw(App *a) {
         return;
     }
     a->awaiting_ack = 0;
+
+    // A frame limit (for slow terminals like tmux): hold new frames back
+    if (a->playing && a->max_fps > 0 && !a->frame_drawn &&
+        now - a->last_frame_ms < 1000.0 / a->max_fps) {
+        a->limited = 1;
+        return;
+    }
+
     // Video noise flickers flat areas by a few steps each frame; sending
     // those cells is costly and invisible. Paused frames are exact again.
     a->screen->tolerance = a->playing ? PLAY_TOLERANCE : 0;
@@ -159,6 +184,8 @@ static void draw(App *a) {
     screen_clear(a->screen, t->main_fg, t->main_bg);
     if (a->overlay == OVERLAY_HELP) {
         view_help(a);
+    } else if (a->overlay == OVERLAY_OPTIONS) {
+        view_options(a);
     } else {
         if (a->show[PANEL_VIEWER] || a->compact) {
             view_viewer(a);
@@ -166,6 +193,7 @@ static void draw(App *a) {
         if (!a->compact) {
             view_info(a);
             view_controls(a);
+            view_histogram(a);
             view_timeline(a);
         }
         view_status(a);
@@ -185,6 +213,7 @@ static void draw(App *a) {
     if (!a->frame_drawn) {
         a->frame_drawn = 1;
         a->frames_out++;
+        a->last_frame_ms = now;
     }
     if (now - a->fps_window_ms >= 1000.0) {
         a->out_fps = a->frames_out * 1000.0 / (now - a->fps_window_ms);
@@ -233,10 +262,11 @@ static void clock_set(App *a, int64_t play_us) {
 
 // Put a frame from the player on screen
 static void show_frame(App *a, Frame *f) {
-    if (a->frame && !a->frame_drawn) {
+    if (a->frame && !a->frame_drawn && !a->limited) {
         a->dropped++;   // replaced before it ever reached the terminal
     }
     a->frame_drawn = 0;
+    a->limited = 0;
     frame_free(a->frame);
     a->frame = f;
     a->frame_serial++;
@@ -376,7 +406,19 @@ static void handle_key(App *a, int key) {
         a->awaiting_ack = 0;
         return;
     }
+    if (a->prompting) {
+        prompt_key(a, key);
+        return;
+    }
     a->message[0] = '\0';
+    if (a->overlay == OVERLAY_OPTIONS) {
+        if (key == KEY_CTRL_C) {
+            a->running = 0;
+        } else if (options_key(a, key)) {
+            a->overlay = OVERLAY_NONE;
+        }
+        return;
+    }
     if (a->overlay == OVERLAY_HELP) {
         if (key == KEY_CTRL_C) {
             a->running = 0;
@@ -405,7 +447,7 @@ static void handle_key(App *a, int key) {
         break;
     }
     case KEY_CTRL_R:
-        a->screen->full = 1;
+        reload_config(a);
         break;
     case '?':
     case KEY_F1:
@@ -414,17 +456,34 @@ static void handle_key(App *a, int key) {
         break;
     case 'o':
     case KEY_F2:
-        snprintf(a->message, sizeof(a->message), "options arrive in M5");
+        a->overlay = OVERLAY_OPTIONS;
         break;
     case '1':
     case '2':
     case '3':
+    case '4':
     case '5':
         a->show[key - '1'] = !a->show[key - '1'];
         layout(a);
         break;
-    case '4':
-        snprintf(a->message, sizeof(a->message), "histogram arrives in M5");
+    case 'e':
+        start_export(a);
+        break;
+    case 'b':
+    case 'B':
+        select_control(a, CTL_BRIGHTNESS, key == 'b' ? 1 : -1);
+        break;
+    case 't':
+    case 'T':
+        select_control(a, CTL_CONTRAST, key == 't' ? 1 : -1);
+        break;
+    case 'g':
+    case 'G':
+        select_control(a, CTL_GAMMA, key == 'g' ? 1 : -1);
+        break;
+    case 's':
+    case 'S':
+        select_control(a, CTL_SATURATION, key == 's' ? 1 : -1);
         break;
     case KEY_UP:
         a->selected = (a->selected + CTL_COUNT - 1) % CTL_COUNT;
@@ -508,6 +567,116 @@ static void handle_key(App *a, int key) {
     }
 }
 
+// Ask for a file name, suggesting the image's name as .html
+static void start_export(App *a) {
+    // Long names are cut so ".html" still fits in the prompt
+    char stem[240];
+    snprintf(stem, sizeof(stem), "%.*s", (int)sizeof(stem) - 1, a->name);
+    char *dot = strrchr(stem, '.');
+    if (dot && dot != stem) {
+        *dot = '\0';
+    }
+    snprintf(a->prompt, sizeof(a->prompt), "%s.html", stem);
+    a->prompting = 1;
+}
+
+// Write the art on screen in the format the file name asks for
+static void finish_export(App *a) {
+    const char *name = a->prompt;
+    size_t n = strlen(name);
+    Buf out;
+    buf_init(&out);
+    if (!a->art) {
+        snprintf(a->message, sizeof(a->message), "nothing to export yet");
+        return;
+    }
+    if (n > 5 && strcmp(name + n - 5, ".html") == 0) {
+        export_html(a->art, &out, a->theme->main_fg, a->theme->main_bg);
+    } else if (n > 4 && strcmp(name + n - 4, ".ans") == 0) {
+        export_ansi(a->art, &out);
+    } else if (n > 4 && strcmp(name + n - 4, ".txt") == 0) {
+        export_txt(a->art, &out);
+    } else {
+        snprintf(a->message, sizeof(a->message), "use .html, .ans or .txt");
+        buf_free(&out);
+        return;
+    }
+    FILE *f = fopen(name, "w");
+    int ok = f && fwrite(out.data, 1, out.len, f) == out.len;
+    if (f && fclose(f) != 0) {
+        ok = 0;
+    }
+    buf_free(&out);
+    snprintf(a->message, sizeof(a->message), ok ? "saved %s" : "cannot write %s",
+             name);
+}
+
+// Typing into the export prompt, returns 1 when the key was used
+static int prompt_key(App *a, int key) {
+    size_t len = strlen(a->prompt);
+    if (key == KEY_ENTER) {
+        a->prompting = 0;
+        if (len) {
+            finish_export(a);
+        }
+    } else if (key == KEY_ESC || key == KEY_CTRL_C) {
+        a->prompting = 0;
+    } else if (key == KEY_BACKSPACE) {
+        // Remove the last whole UTF-8 character
+        while (len > 0 && ((unsigned char)a->prompt[len - 1] & 0xC0) == 0x80) {
+            len--;
+        }
+        if (len > 0) {
+            len--;
+        }
+        a->prompt[len] = '\0';
+    } else if (key >= 0x20 && key < KEY_UP && key != 0x7F) {
+        Buf b;
+        buf_init(&b);
+        buf_utf8(&b, (uint32_t)key);
+        if (len + b.len < sizeof(a->prompt)) {
+            memcpy(a->prompt + len, b.data, b.len);
+            a->prompt[len + b.len] = '\0';
+        }
+        buf_free(&b);
+    }
+    return 1;
+}
+
+// Ctrl+R: read the config and theme files again
+static void reload_config(App *a) {
+    Config c;
+    char warn[200];
+    int bad = config_load(&c, warn, sizeof(warn)) != 0;
+    snprintf(a->config.theme, sizeof(a->config.theme), "%s", c.theme);
+    a->config.theme_background = c.theme_background;
+    a->config.rounded = c.rounded;
+    a->config.vim_keys = a->vim_keys = c.vim_keys;
+    a->config.max_fps = a->max_fps = c.max_fps;
+    app_apply_theme(a);
+    if (bad) {
+        snprintf(a->message, sizeof(a->message), "%s", warn);
+    } else if (!a->message[0]) {
+        snprintf(a->message, sizeof(a->message), "config reloaded");
+    }
+}
+
+void app_apply_theme(App *a) {
+    char warn[160];
+    a->theme_count = theme_list(a->theme_names, MAX_THEMES);
+    if (theme_load(a->config.theme, &a->theme_data, warn, sizeof(warn)) != 0) {
+        snprintf(a->message, sizeof(a->message), "%s", warn);
+    }
+    if (!a->config.theme_background) {
+        a->theme_data.main_bg = CELL_COLOR_DEFAULT;
+    }
+    a->theme = &a->theme_data;
+    draw_set_rounded(a->config.rounded);
+    if (a->screen) {
+        a->screen->full = 1;
+    }
+}
+
 static void handle_resize(App *a) {
     int cols, rows;
     term_size(&cols, &rows, &a->cell_aspect);
@@ -518,22 +687,27 @@ static void handle_resize(App *a) {
     layout(a);
 }
 
-int app_run(const char *path, const RenderOpts *opts, ColorDepth ui_depth,
-            int loop) {
+int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
+            const Config *config, ColorDepth ui_depth, const char *warn) {
     App a;
     memset(&a, 0, sizeof(a));
     memset(a.pixels_key, -1, sizeof(a.pixels_key));
+    a.config = *config;
     a.opts = *opts;
     a.start_opts = *opts;
     if (opts->palette != PALETTE_STANDARD && opts->palette != PALETTE_DETAILED &&
         opts->palette != PALETTE_SIMPLE && opts->palette != PALETTE_BLOCKS) {
         a.custom_palette = opts->palette;
     }
-    a.fit = FIT_CONTAIN;
-    a.vim_keys = 1;
+    a.fit = fit;
+    a.vim_keys = config->vim_keys;
+    a.max_fps = config->max_fps;
     a.loop = loop;
     a.speed = 1.0;
-    a.theme = theme_default();
+    app_apply_theme(&a);
+    if (warn && *warn) {
+        snprintf(a.message, sizeof(a.message), "%s", warn);
+    }
     for (int i = 0; i < PANEL_COUNT; i++) {
         a.show[i] = 1;
     }
@@ -588,6 +762,12 @@ int app_run(const char *path, const RenderOpts *opts, ColorDepth ui_depth,
             handle_key(&a, key);
         }
         timeout = advance(&a);
+        if (a.playing && a.max_fps > 0 && !a.frame_drawn) {
+            // A frame held back by the limit goes out when its time comes
+            int left = (int)(1000.0 / a.max_fps - (now_ms() - a.last_frame_ms)) + 1;
+            left = left < 0 ? 0 : left;
+            timeout = timeout < 0 || left < timeout ? left : timeout;
+        }
         if (a.awaiting_ack) {
             // Wake up in time to give up on a terminal that never answers
             int left = (int)(ACK_TIMEOUT_MS - (now_ms() - a.ack_sent_ms)) + 1;

@@ -1,6 +1,7 @@
 #ifndef CHARCOAL_APP_H
 #define CHARCOAL_APP_H
 
+#include "config.h"
 #include "media.h"
 #include "render.h"
 #include "tui.h"
@@ -8,13 +9,6 @@
 #include <stddef.h>
 
 #define CHARCOAL_VERSION "0.1.0-dev"
-
-typedef enum FitMode {
-    FIT_CONTAIN,
-    FIT_COVER,
-    FIT_STRETCH,
-    FIT_COUNT
-} FitMode;
 
 // Panels, numbered by their hotkeys 1-5
 typedef enum Panel {
@@ -28,8 +22,11 @@ typedef enum Panel {
 
 typedef enum Overlay {
     OVERLAY_NONE,
-    OVERLAY_HELP
+    OVERLAY_HELP,
+    OVERLAY_OPTIONS
 } Overlay;
+
+#define MAX_THEMES 64
 
 // Rows of the controls panel, top to bottom
 typedef enum Control {
@@ -70,6 +67,7 @@ typedef struct App {
     int need_first;             // show the next frame that arrives, now
     int dropped;                // frames skipped to keep up
     int frame_drawn;            // the frame on screen reached the terminal
+    int limited;                // the max fps limit held the frame back
     int awaiting_ack;           // a frame went out, the terminal has not
     double ack_sent_ms;         // answered yet
     double term_lag_ms;         // how long the terminal takes per frame
@@ -81,6 +79,12 @@ typedef struct App {
     int target_changed;
 
     // Settings
+    Config config;              // what the options overlay saves
+    Theme theme_data;           // the loaded theme a->theme points at
+    char theme_names[MAX_THEMES][64];
+    int theme_count;
+    int max_fps;                // 0 = every frame
+    double last_frame_ms;       // when the last video frame went out
     RenderOpts opts;
     RenderOpts start_opts;      // what r resets the adjustments to
     const char *custom_palette; // from --palette, if not a built-in
@@ -101,11 +105,17 @@ typedef struct App {
     Rect r_controls;
     Rect r_status;
     Rect r_timeline;
+    Rect r_histogram;
+    double histogram[256];      // share of pixels per luminance, of the view
     int selected;               // highlighted control row
     int scroll;                 // first control row shown
     Overlay overlay;
     int help_page;
-    char message[96];           // one-off note shown in the viewer border
+    int opt_tab;                // options overlay: tab and selected row
+    int opt_sel;
+    int prompting;              // typing a file name to export to
+    char prompt[256];
+    char message[256];          // one-off note shown in the viewer border
     int running;
 
     // Render cache
@@ -121,8 +131,10 @@ typedef struct App {
 } App;
 
 // Run the viewer on a file until the user quits, returns the exit code
-int app_run(const char *path, const RenderOpts *opts, ColorDepth ui_depth,
-            int loop);
+// opts, fit and loop are this run's settings (config plus command line);
+// config is what the options overlay edits and saves; warn is shown first
+int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
+            const Config *config, ColorDepth ui_depth, const char *warn);
 
 // Resize and render the viewer's art if settings changed
 void viewer_update(App *a);
@@ -134,15 +146,23 @@ void view_controls(App *a);
 void view_status(App *a);
 void view_help(App *a);
 void view_timeline(App *a);
+void view_histogram(App *a);
+void view_options(App *a);
+
+// The charcoal logo and version, centered, 4 rows from y
+void view_logo(App *a, int y);
+
+// Options overlay: handle a key, returns 1 when the overlay should close
+int options_key(App *a, int key);
+
+// Load the theme named in the config and apply the general settings
+void app_apply_theme(App *a);
 
 // Time as m:ss (or h:mm:ss), with tenths when short is set
 void format_time(int64_t us, int tenths, char *out, size_t n);
 
 // Step a control's value by dir (-1 or +1)
 void controls_change(App *a, int control, int dir);
-
-// Name of a fit mode
-const char *fit_name(FitMode f);
 
 // Help overlay: handle a key, returns 1 when the overlay should close
 int help_key(App *a, int key);
