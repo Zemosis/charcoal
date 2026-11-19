@@ -134,6 +134,9 @@ void dither_levels(const uint8_t *luma, int w, int h, int levels,
 // RGB of an xterm palette index (0-255)
 uint32_t color_index_rgb(int index);
 
+// Set what one of the 16 terminal colors really is (from the terminal)
+void color_set_ansi16(int index, uint32_t rgb);
+
 // Nearest palette color as CELL_COLOR_INDEX | index (256 skips 0-15)
 uint32_t color_nearest(uint32_t rgb, ColorDepth depth);
 

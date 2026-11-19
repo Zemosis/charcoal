@@ -6,7 +6,9 @@
 #include <string.h>
 
 // xterm's default 16 colors, used until themes can supply the real ones
-static const uint32_t ANSI16[16] = {
+// The terminal's 16 colors: xterm's defaults until the terminal says
+// otherwise (color_set_ansi16, from an OSC 4 reply)
+static uint32_t ANSI16[16] = {
     0x000000, 0xcd0000, 0x00cd00, 0xcdcd00, 0x0000ee, 0xcd00cd, 0x00cdcd,
     0xe5e5e5, 0x7f7f7f, 0xff0000, 0x00ff00, 0xffff00, 0x5c5cff, 0xff00ff,
     0x00ffff, 0xffffff,
@@ -137,6 +139,15 @@ static int nearest_16(uint32_t rgb, const Lab *pal) {
 
 static int clamp255(int v) {
     return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+void color_set_ansi16(int index, uint32_t rgb) {
+    if (index < 0 || index > 15) {
+        return;
+    }
+    pthread_once(&tables_once, build_tables);
+    ANSI16[index] = rgb & 0xFFFFFF;
+    palette_lab[index] = rgb_to_oklab(rgb);
 }
 
 uint32_t color_index_rgb(int index) {
