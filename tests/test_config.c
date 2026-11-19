@@ -19,7 +19,8 @@ static void test_parse(void) {
                  "contrast = 1.5\n"
                  "vim_keys = false\n"
                  "max_fps = 20\n"
-                 "fit = cover\n",
+                 "fit = cover\n"
+                 "panels = \"viewer controls\"\n",
                  &c, warn, sizeof(warn));
     CHECK_STR(warn, "");
     CHECK_STR(c.theme, "nord");
@@ -33,9 +34,14 @@ static void test_parse(void) {
     CHECK_INT(c.vim_keys, 0);
     CHECK_INT(c.max_fps, 20);
     CHECK_INT(c.fit, FIT_COVER);
+    CHECK_INT(c.panels[0], 1);
+    CHECK_INT(c.panels[1], 0);
+    CHECK_INT(c.panels[2], 1);
+    CHECK_INT(c.panels[4], 0);
 
     // Bad lines are reported and leave the value alone
-    config_parse("mode = sideways\nwhat = 1\ngamma = 9\nnonsense\n", &c, warn,
+    config_parse("mode = sideways\nwhat = 1\ngamma = 9\nnonsense\n"
+                 "panels = viewer sidebar\n", &c, warn,
                  sizeof(warn));
     CHECK_INT(c.mode, MODE_BRAILLE);
     CHECK(c.gamma == 1.0);
@@ -43,6 +49,7 @@ static void test_parse(void) {
     CHECK(strstr(warn, "line 2: unknown key what") != NULL);
     CHECK(strstr(warn, "line 3: bad value for gamma") != NULL);
     CHECK(strstr(warn, "line 4") != NULL);
+    CHECK(strstr(warn, "line 5: bad value for panels") != NULL);
 
     // A built-in palette name gives the built-in ramp
     config_parse("palette = detailed\n", &c, warn, sizeof(warn));
@@ -61,6 +68,7 @@ static void test_round_trip(void) {
     a.saturation = 1.7;
     a.loop = 0;
     a.rounded = 0;
+    a.panels[3] = 0;
 
     Buf out;
     buf_init(&out);
@@ -77,6 +85,8 @@ static void test_round_trip(void) {
     CHECK(b.saturation == 1.7);
     CHECK_INT(b.loop, 0);
     CHECK_INT(b.rounded, 0);
+    CHECK_INT(b.panels[3], 0);
+    CHECK_INT(b.panels[4], 1);
     buf_free(&out);
 }
 
