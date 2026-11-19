@@ -122,13 +122,21 @@ static void test_html(void) {
     g->cells[2] = (Cell){0x2580, CELL_COLOR_INDEX | 21, 0x000000, 0};
     Buf b;
     buf_init(&b);
-    export_html(g, &b, 0xd4be98, 0x282828);
+    export_html(g, &b, 0xd4be98, 0x282828, 2.2);
     buf_putc(&b, '\0');
     CHECK(strstr(b.data, "background:#282828") != NULL);
-    // One span for the two red cells, the < escaped; palette colors as RGB
-    CHECK(strstr(b.data, "<pre><span style=\"color:#ff0000\">&lt;a</span>"
+    // Rows as tall as the terminal's cells
+    CHECK(strstr(b.data, "height: 2.200ch") != NULL);
+    // One span for the two red cells, the < escaped; palette colors as RGB;
+    // the half block is painted (top half) and kept for copying
+    CHECK(strstr(b.data, "<div><span style=\"color:#ff0000\">&lt;a</span>"
                          "<span style=\"color:#0000ff;background:#000000\">"
-                         "\xe2\x96\x80</span>\n</pre>") != NULL);
+                         "<i class=\"q q3\">\xe2\x96\x80</i></span></div>\n")
+          != NULL);
+    CHECK(strstr(b.data, ".art .q3 { background-image: linear-gradient("
+                         "currentColor, currentColor), linear-gradient("
+                         "currentColor, currentColor); background-position: "
+                         "0 0, 100% 0; }") != NULL);
     buf_free(&b);
     grid_free(g);
 }
