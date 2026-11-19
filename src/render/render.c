@@ -127,6 +127,7 @@ void mode_subpixels(GlyphMode mode, int *sub_w, int *sub_h) {
         *sub_h = 2;
         break;
     case MODE_QUAD:
+    case MODE_EDGES:
         *sub_w = 2;
         *sub_h = 2;
         break;

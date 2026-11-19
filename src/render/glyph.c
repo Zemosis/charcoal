@@ -12,8 +12,12 @@
 
 #define PI 3.14159265358979323846
 
-// Sobel magnitude above which a cell counts as an edge
-#define EDGE_THRESHOLD 256.0
+// Edges: the strongest share of gradients count, but never weaker ones
+// than EDGE_MIN (a flat picture has no edges); magnitudes are binned for it
+#define EDGE_SHARE 0.15
+#define EDGE_MIN 96.0
+#define EDGE_BINS 256
+#define EDGE_BIN_W 8.0
 
 // Quadrant characters by mask: 1 top-left, 2 top-right, 4 bottom-left,
 // 8 bottom-right
@@ -47,7 +51,9 @@ static int ramp_decode(const char *palette, uint32_t *ramp);
 static uint32_t pack_rgb(const uint8_t *p, int invert);
 static void glyph_ascii(const uint8_t *rgb, const Planes *pl,
                         const RenderOpts *o, Grid *g);
-static void glyph_edges(const Planes *pl, const RenderOpts *o, Grid *g);
+static int glyph_edges(const Planes *pl, const RenderOpts *o, Grid *g);
+static int edges_base(const uint8_t *rgb, const Planes *pl, const RenderOpts *o,
+                      Grid *g);
 static void glyph_half(const uint8_t *rgb, const Planes *pl,
                        const RenderOpts *o, Grid *g);
 static void glyph_quad(const uint8_t *rgb, const Planes *pl,
@@ -100,12 +106,26 @@ static void glyph_ascii(const uint8_t *rgb, const Planes *pl,
     }
 }
 
-// Strong edges become / \ | - by direction, everything else is ascii
-static void glyph_edges(const Planes *pl, const RenderOpts *o, Grid *g) {
+// Edge lines from 2x2 samples per cell, Canny-style: Sobel gradients,
+// thinned to their peaks, against a threshold taken from the picture
+// itself (its strongest EDGE_SHARE of gradients, never below EDGE_MIN).
+// Each cell shows its strongest edge as / \ | -, or keeps its ascii glyph.
+// Returns 0, or -1 if out of memory
+static int glyph_edges(const Planes *pl, const RenderOpts *o, Grid *g) {
     const uint8_t *l = pl->luma;
     int w = pl->w, h = pl->h;
+    size_t n = (size_t)w * (size_t)h;
     double aspect = o->cell_aspect > 0 ? o->cell_aspect : 2.0;
+    float *mag = malloc(sizeof(float) * n);
+    uint8_t *dir = malloc(n);
+    if (!mag || !dir) {
+        free(mag);
+        free(dir);
+        return -1;
+    }
 
+    // Gradients; samples are cell_aspect times taller than wide, like cells
+    int hist[EDGE_BINS] = {0};
     for (int y = 0; y < h; y++) {
         int y0 = y > 0 ? y - 1 : 0, y1 = y < h - 1 ? y + 1 : h - 1;
         for (int x = 0; x < w; x++) {
@@ -114,25 +134,109 @@ static void glyph_edges(const Planes *pl, const RenderOpts *o, Grid *g) {
                      (l[y0 * w + x0] + 2 * l[y * w + x0] + l[y1 * w + x0]);
             int gy = (l[y1 * w + x0] + 2 * l[y1 * w + x] + l[y1 * w + x1]) -
                      (l[y0 * w + x0] + 2 * l[y0 * w + x] + l[y0 * w + x1]);
-
-            // Cells are taller than wide, so a row step covers more distance
             double gyn = gy / aspect;
-            if (gx * (double)gx + gyn * gyn < EDGE_THRESHOLD * EDGE_THRESHOLD) {
-                continue;
-            }
+            double m = sqrt(gx * (double)gx + gyn * gyn);
+            mag[y * w + x] = (float)m;
+            int bin = (int)(m / EDGE_BIN_W);
+            hist[bin < EDGE_BINS ? bin : EDGE_BINS - 1]++;
 
-            // The edge runs across the gradient; y grows downward
+            // Gradient direction in 4 steps; the edge runs across it
             double a = atan2(gyn, gx) * 180.0 / PI;
             if (a < 0) {
                 a += 180.0;
             }
-            uint32_t ch = a < 22.5 || a >= 157.5 ? '|'
-                        : a < 67.5               ? '/'
-                        : a < 112.5              ? '-'
-                                                 : '\\';
-            g->cells[y * w + x].ch = ch;
+            dir[y * w + x] = a < 22.5 || a >= 157.5 ? 0
+                           : a < 67.5               ? 1
+                           : a < 112.5              ? 2
+                                                    : 3;
         }
     }
+
+    // Threshold: what the strongest EDGE_SHARE of samples exceed
+    double thr = EDGE_MIN;
+    size_t above = 0;
+    for (int b = EDGE_BINS - 1; b >= 0; b--) {
+        above += (size_t)hist[b];
+        if (above >= (size_t)(n * EDGE_SHARE)) {
+            double t = b * EDGE_BIN_W;
+            thr = t > thr ? t : thr;
+            break;
+        }
+    }
+
+    // Neighbors along the gradient for each direction, to keep only peaks
+    static const int NX[4] = {1, 1, 0, -1};
+    static const int NY[4] = {0, 1, 1, 1};
+    static const uint32_t CHARS[4] = {'|', '/', '-', '\\'};
+    for (int cy = 0; cy < g->rows; cy++) {
+        for (int cx = 0; cx < g->cols; cx++) {
+            float best = 0;
+            int best_dir = -1;
+            for (int k = 0; k < 4; k++) {
+                int x = cx * 2 + (k & 1), y = cy * 2 + (k >> 1);
+                if (x >= w || y >= h) {
+                    continue;
+                }
+                float m = mag[y * w + x];
+                if (m < thr || m <= best) {
+                    continue;
+                }
+                int d = dir[y * w + x];
+                int ax = x + NX[d], ay = y + NY[d], bx = x - NX[d], by = y - NY[d];
+                float ma = ax >= 0 && ay >= 0 && ax < w && ay < h ? mag[ay * w + ax]
+                                                                  : 0;
+                float mb = bx >= 0 && by >= 0 && bx < w && by < h ? mag[by * w + bx]
+                                                                  : 0;
+                if (m >= ma && m >= mb) {
+                    best = m;
+                    best_dir = d;
+                }
+            }
+            if (best_dir >= 0) {
+                g->cells[cy * g->cols + cx].ch = CHARS[best_dir];
+            }
+        }
+    }
+    free(mag);
+    free(dir);
+    return 0;
+}
+
+// The ascii glyph under the edges: each cell's 2x2 samples averaged
+static int edges_base(const uint8_t *rgb, const Planes *pl, const RenderOpts *o,
+                      Grid *g) {
+    int cols = g->cols, rows = g->rows;
+    size_t n = (size_t)cols * (size_t)rows;
+    uint8_t *crgb = malloc(n * 3);
+    Planes cp = {cols, rows, malloc(n), malloc(n)};
+    if (!crgb || !cp.luma || !cp.level) {
+        free(crgb);
+        free(cp.luma);
+        free(cp.level);
+        return -1;
+    }
+    for (int cy = 0; cy < rows; cy++) {
+        for (int cx = 0; cx < cols; cx++) {
+            int sum[3] = {0}, lsum = 0;
+            for (int k = 0; k < 4; k++) {
+                size_t i = (size_t)(cy * 2 + (k >> 1)) * pl->w + cx * 2 + (k & 1);
+                for (int c = 0; c < 3; c++) {
+                    sum[c] += rgb[i * 3 + c];
+                }
+                lsum += pl->luma[i];
+            }
+            size_t j = (size_t)cy * cols + cx;
+            for (int c = 0; c < 3; c++) {
+                crgb[j * 3 + c] = (uint8_t)((sum[c] + 2) / 4);
+            }
+            cp.luma[j] = (uint8_t)((lsum + 2) / 4);
+        }
+    }
+    glyph_ascii(crgb, &cp, o, g);
+    free(crgb);
+    free(cp.luma);
+    free(cp.level);
+    return 0;
 }
 
 // Two pixels per cell: ▀ with the top pixel as fg and the bottom as bg
@@ -367,8 +471,11 @@ int glyph_render(const uint8_t *rgb, const RenderOpts *o, Grid *g) {
         glyph_ascii(rgb, &pl, o, g);
         break;
     case MODE_EDGES:
-        glyph_ascii(rgb, &pl, o, g);
-        glyph_edges(&pl, o, g);
+        if (edges_base(rgb, &pl, o, g) != 0 || glyph_edges(&pl, o, g) != 0) {
+            free(pl.luma);
+            free(pl.level);
+            return -1;
+        }
         break;
     case MODE_HALF:
         glyph_half(rgb, &pl, o, g);
