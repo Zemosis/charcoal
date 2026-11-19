@@ -38,6 +38,8 @@ static const HelpEntry ENTRIES[] = {
     {"g, G", NULL, "Gamma up / down."},
     {"s, S", NULL, "Saturation up / down."},
     {"e", NULL, "Export the view to .html, .ans or .txt."},
+    {"n, N", NULL, "Next / previous image or video in the folder."},
+    {"O", NULL, "Open another file (type to filter)."},
     {"+, -", NULL, "Zoom in / out."},
     {"Shift+arrows", "Shift+arrows, H J K L", "Pan when zoomed in."},
     {"r", NULL, "Reset zoom, pan and adjustments."},

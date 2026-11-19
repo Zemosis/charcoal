@@ -169,13 +169,21 @@ void view_viewer(App *a) {
     }
 
     // File name at the right of the top border, note at the bottom
-    int name_w = text_width(a->name);
+    // "name  3/12" when the folder has more to flip through with n / N
+    char named[300];
+    if (a->file_count > 1) {
+        snprintf(named, sizeof(named), "%s  %d/%d", a->name, a->file_index,
+                 a->file_count);
+    } else {
+        snprintf(named, sizeof(named), "%s", a->name);
+    }
+    int name_w = text_width(named);
     int max_name = r.w - 16;
     if (max_name > 4) {
-        char shown[272];
+        char shown[320];
         if (name_w > max_name) {
             // Keep the end of long names, where the extension is
-            const char *p = a->name;
+            const char *p = named;
             int skip = name_w - (max_name - 1);
             uint32_t cp;
             while (skip-- > 0) {
@@ -183,7 +191,7 @@ void view_viewer(App *a) {
             }
             snprintf(shown, sizeof(shown), "…%s", p);
         } else {
-            snprintf(shown, sizeof(shown), "%s", a->name);
+            snprintf(shown, sizeof(shown), "%s", named);
         }
         draw_border_label(a->screen, r.x + r.w - 2 - text_width(shown) - 2, r.y,
                           shown, NULL, t);

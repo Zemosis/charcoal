@@ -31,7 +31,8 @@ static const double SPEEDS[] = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0};
 
 // Prototype
 static double now_ms(void);
-static int app_load(App *a, const char *path);
+static int app_load(App *a, const char *path, char *err, int err_len);
+static void open_neighbor(App *a, int dir);
 static void app_free(App *a);
 static void layout(App *a);
 static void draw(App *a);
@@ -60,44 +61,131 @@ static double now_ms(void) {
     return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
 }
 
-// Decode the first frame at full size; animations and video get a player
-static int app_load(App *a, const char *path) {
-    char err[512];
-    MediaFile *m = media_open(path, err, sizeof(err));
+// Open path into the app: first frame at full size, a player for anything
+// that moves. Loads into temporaries first, so a file that fails to open
+// leaves the current one alone. Returns 0, or -1 with the reason in err
+static int app_load(App *a, const char *path, char *err, int err_len) {
+    char why[400];
+    const char *name = path_name(path);
+    MediaFile *m = media_open(path, why, sizeof(why));
     if (!m) {
-        fprintf(stderr, "charcoal: %s\n", err);
+        // media_open starts its message with the path; the name is enough
+        size_t plen = strlen(path);
+        const char *reason = strncmp(why, path, plen) == 0 && why[plen] == ':'
+                                 ? why + plen + 2
+                                 : why;
+        snprintf(err, (size_t)err_len, "%s: %s", name, reason);
         return -1;
     }
-    snprintf(a->codec, sizeof(a->codec), "%s", media_codec_name(m));
-    a->frame = media_decode_first(m, 0, 0, err, sizeof(err));
-    // After decoding: a photo's EXIF may have turned it
-    media_size(m, &a->src_w, &a->src_h);
-    a->kind = media_kind(m);
-    a->duration_us = media_duration_us(m);
-    a->fps = media_fps(m);
+    Frame *frame = media_decode_first(m, 0, 0, why, sizeof(why));
+    int src_w, src_h;
+    media_size(m, &src_w, &src_h);      // after decoding: EXIF may turn it
+    MediaKind kind = media_kind(m);
+    int64_t duration = media_duration_us(m);
+    double fps = media_fps(m);
+    char codec[32];
+    snprintf(codec, sizeof(codec), "%s", media_codec_name(m));
     media_close(m);
-    if (!a->frame) {
-        fprintf(stderr, "charcoal: %s: %s\n", path, err);
+    if (!frame) {
+        snprintf(err, (size_t)err_len, "%s: %s", name, why);
         return -1;
     }
-
-    if (a->kind != MEDIA_STILL) {
-        a->player = player_open(path, a->loop, err, sizeof(err));
-        if (!a->player) {
-            fprintf(stderr, "charcoal: %s: %s\n", path, err);
+    Player *player = NULL;
+    if (kind != MEDIA_STILL) {
+        player = player_open(path, a->loop, why, sizeof(why));
+        if (!player) {
+            snprintf(err, (size_t)err_len, "%s: %s", name, why);
+            frame_free(frame);
             return -1;
         }
-        a->playing = 1;
-        a->need_first = 1;
     }
 
-    const char *base = strrchr(path, '/');
-    snprintf(a->name, sizeof(a->name), "%s", base && base[1] ? base + 1 : path);
+    // It worked: swap the new file in
+    player_close(a->player);
+    frame_free(a->frame);
+    a->player = player;
+    a->frame = frame;
+    a->frame_serial++;
+    a->frame_drawn = 0;
+    a->src_w = src_w;
+    a->src_h = src_h;
+    a->kind = kind;
+    a->duration_us = duration;
+    a->fps = fps;
+    snprintf(a->codec, sizeof(a->codec), "%s", codec);
+    snprintf(a->path, sizeof(a->path), "%s", path);
+    snprintf(a->name, sizeof(a->name), "%s", *name ? name : path);
+    a->playing = player != NULL;
+    a->need_first = player != NULL;
+    a->dropped = 0;
+    a->want_w = a->want_h = 0;      // the new player needs a size
+    a->target_changed = 0;
+    a->zoom = 1.0;
+    a->pan_x = src_w / 2.0;
+    a->pan_y = src_h / 2.0;
+    clock_set(a, 0);
+    memset(a->pixels_key, -1, sizeof(a->pixels_key));
+    a->dirty = 1;
+
+    // Where it sits among its folder's media files, for n / N
+    char ignore[4096];
+    if (files_neighbor(path, 0, ignore, sizeof(ignore), &a->file_index,
+                       &a->file_count) != 0) {
+        a->file_index = a->file_count = 0;
+    }
     return 0;
+}
+
+int app_open_file(App *a, const char *path) {
+    char err[480];
+    if (app_load(a, path, err, sizeof(err)) != 0) {
+        snprintf(a->message, sizeof(a->message), "cannot open %.230s", err);
+        return -1;
+    }
+    a->message[0] = '\0';
+    layout(a);      // the timeline comes and goes with the kind
+    return 0;
+}
+
+// Next or previous media file in the same folder; files that do not open
+// are skipped, so one broken file never blocks the rest
+static void open_neighbor(App *a, int dir) {
+    char cand[4096], next[4096], skipped[256] = "";
+    int index, count, tried = 0;
+    snprintf(cand, sizeof(cand), "%s", a->path);
+    do {
+        if (files_neighbor(cand, dir, next, sizeof(next), &index, &count) != 0) {
+            snprintf(a->message, sizeof(a->message), "no other files here");
+            return;
+        }
+        if (count == 1) {
+            snprintf(a->message, sizeof(a->message), "the only file here");
+            return;
+        }
+        if (strcmp(path_name(next), a->name) == 0) {
+            break;      // went all the way round
+        }
+        char err[480];
+        if (app_load(a, next, err, sizeof(err)) == 0) {
+            layout(a);
+            if (skipped[0]) {
+                snprintf(a->message, sizeof(a->message), "skipped %.200s", skipped);
+            } else {
+                a->message[0] = '\0';
+            }
+            return;
+        }
+        if (!skipped[0]) {
+            snprintf(skipped, sizeof(skipped), "%.200s", err);
+        }
+        snprintf(cand, sizeof(cand), "%s", next);
+    } while (++tried < count);
+    snprintf(a->message, sizeof(a->message), "cannot open %.200s", skipped);
 }
 
 static void app_free(App *a) {
     player_close(a->player);
+    picker_close(a);
     grid_free(a->export_art);
     frame_free(a->frame);
     grid_free(a->art);
@@ -192,6 +280,8 @@ static void draw(App *a) {
         view_options(a);
     } else if (a->overlay == OVERLAY_MENU) {
         view_menu(a);
+    } else if (a->overlay == OVERLAY_PICKER) {
+        view_picker(a);
     } else {
         if (a->show[PANEL_VIEWER] || a->compact) {
             view_viewer(a);
@@ -434,6 +524,14 @@ static void handle_key(App *a, int key) {
         }
         return;
     }
+    if (a->overlay == OVERLAY_PICKER) {
+        if (key == KEY_CTRL_C) {
+            a->running = 0;
+        } else if (picker_key(a, key)) {
+            a->overlay = OVERLAY_NONE;
+        }
+        return;
+    }
     if (a->overlay == OVERLAY_OPTIONS) {
         if (key == KEY_CTRL_C) {
             a->running = 0;
@@ -497,6 +595,18 @@ static void handle_key(App *a, int key) {
     case 'e':
         start_export(a);
         break;
+    case 'n':
+        open_neighbor(a, 1);
+        break;
+    case 'N':
+        open_neighbor(a, -1);
+        break;
+    case 'O': {
+        char dir[4096];
+        path_dir(a->path, dir, sizeof(dir));
+        picker_open(a, dir);
+        break;
+    }
     case 'b':
     case 'B':
         select_control(a, CTL_BRIGHTNESS, key == 'b' ? 1 : -1);
@@ -751,7 +861,8 @@ static void handle_resize(App *a) {
 }
 
 int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
-            const Config *config, ColorDepth ui_depth, const char *warn) {
+            const Config *config, ColorDepth ui_depth, const char *warn,
+            int picker) {
     App a;
     memset(&a, 0, sizeof(a));
     memset(a.pixels_key, -1, sizeof(a.pixels_key));
@@ -775,11 +886,17 @@ int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
         a.show[i] = 1;
     }
 
-    if (app_load(&a, path) != 0) {
+    char err[480];
+    if (app_load(&a, path, err, sizeof(err)) != 0) {
+        fprintf(stderr, "charcoal: %s\n", err);
         app_free(&a);
         return 1;
     }
-    reset_view(&a);
+    if (picker) {
+        char dir[4096];
+        path_dir(path, dir, sizeof(dir));
+        picker_open(&a, dir);
+    }
 
     if (term_init() != 0) {
         fprintf(stderr, "charcoal: the viewer needs a terminal\n");

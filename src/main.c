@@ -1,6 +1,7 @@
 #include "app.h"
 #include "buf.h"
 #include "config.h"
+#include "files.h"
 #include "media.h"
 #include "render.h"
 #include "tui.h"
@@ -62,6 +63,7 @@ static void usage(FILE *out) {
         "\n"
         "Usage:\n"
         "  charcoal <file> [options]                 open the viewer\n"
+        "  charcoal <folder> [options]               browse a folder\n"
         "  charcoal render <file> [options]          print once and exit\n"
         "  charcoal export <file> -o <out> [options] write .txt, .ans or .html\n"
         "\n"
@@ -378,9 +380,23 @@ int main(int argc, char **argv) {
     if (a.warn[0] && !viewer) {
         fprintf(stderr, "charcoal: warning: %s\n", a.warn);
     }
-    if (stat(a.input, &st) == 0 && S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "charcoal: %s is a directory\n", a.input);
-        return 1;
+    // A folder opens its first image or video, with the picker on top
+    char first[4400];
+    int folder = stat(a.input, &st) == 0 && S_ISDIR(st.st_mode);
+    if (folder) {
+        FileList list;
+        if (!viewer) {
+            fprintf(stderr, "charcoal: %s is a folder; render and export take "
+                    "a file\n", a.input);
+            return 1;
+        }
+        if (files_list(a.input, 0, &list) != 0 || list.count == 0) {
+            fprintf(stderr, "charcoal: no images or videos in %s\n", a.input);
+            files_free(&list);
+            return 1;
+        }
+        snprintf(first, sizeof(first), "%s/%s", a.input, list.items[0].name);
+        files_free(&list);
     }
 
     // The viewer needs a terminal on both ends; otherwise print once
@@ -389,8 +405,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "charcoal: -w and -H are for render and export\n");
             return 1;
         }
-        return app_run(a.input, &a.opts, a.fit, a.loop, &a.config,
-                       detect_color(), a.warn);
+        return app_run(folder ? first : a.input, &a.opts, a.fit, a.loop,
+                       &a.config, detect_color(), a.warn, folder);
     }
 
     char err[512];

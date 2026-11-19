@@ -2,6 +2,7 @@
 #define CHARCOAL_APP_H
 
 #include "config.h"
+#include "files.h"
 #include "media.h"
 #include "render.h"
 #include "tui.h"
@@ -24,7 +25,8 @@ typedef enum Overlay {
     OVERLAY_NONE,
     OVERLAY_HELP,
     OVERLAY_OPTIONS,
-    OVERLAY_MENU
+    OVERLAY_MENU,
+    OVERLAY_PICKER
 } Overlay;
 
 // Esc menu entries; menu_key also returns MENU_CLOSE or -1 (stay open)
@@ -56,7 +58,10 @@ typedef enum Control {
 // The interactive viewer's whole state
 typedef struct App {
     // Input
+    char path[4096];            // the file as it was opened
     char name[256];             // file name shown in the UI
+    int file_index;             // position in its folder, 1-based
+    int file_count;             // media files in that folder
     char codec[32];
     MediaKind kind;
     int src_w;                  // full resolution of the media
@@ -124,6 +129,15 @@ typedef struct App {
     int opt_tab;                // options overlay: tab and selected row
     int opt_sel;
     int menu_sel;
+
+    // File picker (O): a folder listing filtered by what was typed
+    char picker_dir[4096];
+    FileList picker_list;
+    int *picker_view;           // indices into picker_list that match
+    int picker_count;
+    int picker_sel;
+    int picker_scroll;
+    char picker_filter[64];
     int prompting;              // typing a file name to export to
     char prompt[256];
     Grid *export_art;           // the view when e was pressed
@@ -145,9 +159,21 @@ typedef struct App {
 
 // Run the viewer on a file until the user quits, returns the exit code
 // opts, fit and loop are this run's settings (config plus command line);
-// config is what the options overlay edits and saves; warn is shown first
+// config is what the options overlay edits and saves; warn is shown first;
+// picker opens the file picker on top, for charcoal <folder>
 int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
-            const Config *config, ColorDepth ui_depth, const char *warn);
+            const Config *config, ColorDepth ui_depth, const char *warn,
+            int picker);
+
+// Open another file in place of the current one; on failure the current
+// one stays and the reason is put in the message. Returns 0 or -1
+int app_open_file(App *a, const char *path);
+
+// File picker: open it on a folder, draw it, handle a key (1 = close)
+void picker_open(App *a, const char *dir);
+void picker_close(App *a);
+void view_picker(App *a);
+int picker_key(App *a, int key);
 
 // Resize and render the viewer's art if settings changed
 void viewer_update(App *a);

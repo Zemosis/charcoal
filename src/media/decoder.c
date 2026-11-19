@@ -536,11 +536,15 @@ MediaFile *media_open(const char *path, char *err, int err_len) {
     if (m->width < 1 || m->height < 1) {
         // FFmpeg reads no size when its decoder cannot handle the file,
         // which is what happens to animated WebP before FFmpeg supports it
-        snprintf(err, (size_t)err_len,
-                 "%s: this FFmpeg build cannot decode it (%s)", path,
-                 m->codec->id == AV_CODEC_ID_WEBP
-                     ? "animated WebP; build charcoal with libwebp-devel"
-                     : m->codec->name);
+        if (m->codec->id == AV_CODEC_ID_WEBP) {
+            snprintf(err, (size_t)err_len,
+                     "%s: this FFmpeg build cannot decode it (animated WebP; "
+                     "build charcoal with libwebp-devel)", path);
+        } else {
+            snprintf(err, (size_t)err_len,
+                     "%s: cannot read it (damaged, or not really %s)", path,
+                     m->codec->name);
+        }
         goto fail;
     }
     return m;
