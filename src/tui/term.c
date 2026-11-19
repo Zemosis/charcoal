@@ -12,13 +12,20 @@
 
 // Alternate screen, hidden cursor, no line wrap; and the way back
 #define ENTER_SEQ "\033[?1049h\033[?25l\033[?7l\033[H"
-#define LEAVE_SEQ "\033[0m\033[?7h\033[?25h\033[?1049l"
+#define LEAVE_SEQ "\033[0m\033[?1006l\033[?1002l\033[?1000l\033[?7h\033[?25h" \
+                  "\033[?1049l"
+
+// Mouse: clicks, drags with a button held, wheel; SGR encoding
+#define MOUSE_ON  "\033[?1000h\033[?1002h\033[?1006h"
+#define MOUSE_OFF "\033[?1006l\033[?1002l\033[?1000l"
 
 // How long a lone ESC waits for the rest of an escape sequence
 #define ESC_WAIT_MS 25
 
 static struct termios orig_termios;
 static int active = 0;
+static int mouse_on = 0;
+static MouseEvent last_mouse;
 static int handlers_set = 0;
 static int sig_pipe[2] = {-1, -1};
 
@@ -50,7 +57,25 @@ static void enter_raw(void) {
     if (write(STDOUT_FILENO, ENTER_SEQ, sizeof(ENTER_SEQ) - 1) < 0) {
         // Nothing useful to do if the terminal is gone
     }
+    if (mouse_on && write(STDOUT_FILENO, MOUSE_ON, sizeof(MOUSE_ON) - 1) < 0) {
+        // Same
+    }
     active = 1;
+}
+
+void term_set_mouse(int on) {
+    mouse_on = on;
+    if (!active) {
+        return;
+    }
+    const char *seq = on ? MOUSE_ON : MOUSE_OFF;
+    if (write(STDOUT_FILENO, seq, strlen(seq)) < 0) {
+        // Terminal gone
+    }
+}
+
+void term_mouse(MouseEvent *ev) {
+    *ev = last_mouse;
 }
 
 // Signals only leave a byte in the pipe; the main loop does the work
@@ -218,6 +243,7 @@ static int decode_csi(int *used) {
     int i = 2;
     int params[4] = {0};
     int np = 0;
+    int sgr_mouse = in_len > 2 && inbuf[2] == '<';
     while (i < in_len && inbuf[i] >= 0x30 && inbuf[i] <= 0x3F) {
         if (inbuf[i] == ';') {
             np = np < 3 ? np + 1 : np;
@@ -232,6 +258,17 @@ static int decode_csi(int *used) {
     }
     unsigned char final = inbuf[i];
     *used = i + 1;
+
+    // ESC [ < button ; x ; y M (press, motion) or m (release)
+    if (sgr_mouse && (final == 'M' || final == 'm')) {
+        int b = params[0];
+        last_mouse.x = params[1] - 1;
+        last_mouse.y = params[2] - 1;
+        last_mouse.motion = (b & 32) != 0;
+        last_mouse.button = b & ~(32 | 4 | 8 | 16);  // without motion/mods
+        last_mouse.press = final == 'M';
+        return KEY_MOUSE;
+    }
 
     int shift = np >= 1 && params[1] == 2;
     switch (final) {

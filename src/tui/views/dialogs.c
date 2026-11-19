@@ -25,6 +25,7 @@ void view_menu(App *a) {
     Rect box = {(s->cols - MENU_W) / 2, y0, MENU_W, h};
     draw_fill(s, box, t->main_fg, t->main_bg);
     draw_box(s, box, t, -1, "menu");
+    a->hit_menu = box;
     for (int i = 0; i < MENU_COUNT; i++) {
         int sel = i == a->menu_sel;
         uint32_t fg = sel ? t->selected_fg : t->main_fg;

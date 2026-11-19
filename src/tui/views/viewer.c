@@ -74,6 +74,10 @@ void viewer_update(App *a) {
     a->pan_x = fmin(fmax(a->pan_x, vis_w / 2), W - vis_w / 2);
     a->pan_y = fmin(fmax(a->pan_y, vis_h / 2), H - vis_h / 2);
     double vis_x = a->pan_x - vis_w / 2, vis_y = a->pan_y - vis_h / 2;
+    a->vis_x = vis_x;
+    a->vis_y = vis_y;
+    a->vis_w = vis_w;
+    a->vis_h = vis_h;
 
     int sub_w, sub_h;
     mode_subpixels(a->opts.mode, &sub_w, &sub_h);

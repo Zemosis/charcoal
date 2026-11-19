@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define LABEL_W 12
+#define LABEL_W CONTROLS_LABEL_W
 
 // Built-in palettes in the order p cycles through them
 static const char *const PALETTES[] = {

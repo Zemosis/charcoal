@@ -172,6 +172,7 @@ void view_picker(App *a) {
                       t);
 
     Rect in = rect_inner(box);
+    a->hit_picker = in;
     if (a->picker_sel < a->picker_scroll) {
         a->picker_scroll = a->picker_sel;
     }

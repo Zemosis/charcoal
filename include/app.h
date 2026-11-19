@@ -39,6 +39,17 @@ enum {
 };
 
 #define MAX_THEMES 64
+#define FRAME_HISTORY 256
+
+// Width of the label column in the controls panel
+#define CONTROLS_LABEL_W 12
+
+// What a held mouse button is doing
+enum {
+    DRAG_NONE,
+    DRAG_PAN,       // moving a zoomed image
+    DRAG_SEEK       // scrubbing the timeline
+};
 
 // Rows of the controls panel, top to bottom
 typedef enum Control {
@@ -89,6 +100,9 @@ typedef struct App {
     int frames_out;             // frames sent in the current second
     double fps_window_ms;
     double out_fps;             // frames per second the terminal shows
+    double frame_ms[FRAME_HISTORY];  // render + send time of recent frames
+    int frame_ms_count;
+    int frame_ms_head;          // where the next one goes
     int want_w;                 // frame size asked of the player
     int want_h;
     int target_changed;
@@ -150,6 +164,29 @@ typedef struct App {
     Grid *art;
     int art_x;
     int art_y;
+    double vis_x;               // the part of the image on screen, in its
+    double vis_y;               // own pixels
+    double vis_w;
+    double vis_h;
+
+    // Mouse: where clickable things were last drawn, and what a drag does
+    Rect hit_play;
+    Rect hit_bar;
+    Rect hit_slower;
+    Rect hit_faster;
+    Rect hit_repeat;
+    Rect hit_opt_tabs;
+    Rect hit_opt_list;
+    int opt_scroll;
+    Rect hit_menu;
+    Rect hit_picker;
+    int drag;                   // DRAG_*
+    int drag_x;
+    int drag_y;
+    double drag_pan_x;
+    double drag_pan_y;
+    double last_click_ms;       // for double clicks in the picker
+    int last_click_row;
     uint8_t *pixels;            // the view resized, before adjustments
     uint8_t *work;              // a copy the adjustments run on
     size_t pixels_cap;

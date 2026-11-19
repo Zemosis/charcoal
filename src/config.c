@@ -43,6 +43,7 @@ void config_defaults(Config *c) {
     c->theme_background = 1;
     c->rounded = 1;
     c->vim_keys = 1;
+    c->mouse = 1;
     c->mode = MODE_HALF;
     snprintf(c->palette, sizeof(c->palette), "standard");
     c->fit = FIT_CONTAIN;
@@ -115,6 +116,8 @@ static int apply(Config *c, const char *key, const char *v) {
         return parse_bool(v, &c->rounded);
     } else if (strcmp(key, "vim_keys") == 0) {
         return parse_bool(v, &c->vim_keys);
+    } else if (strcmp(key, "mouse") == 0) {
+        return parse_bool(v, &c->mouse);
     } else if (strcmp(key, "mode") == 0) {
         if ((i = glyph_mode_from_name(v)) < 0) {
             return -1;
@@ -252,6 +255,7 @@ void config_write(const Config *c, Buf *out) {
     put_line(out, "theme_background", c->theme_background ? "true" : "false", 0);
     put_line(out, "rounded", c->rounded ? "true" : "false", 0);
     put_line(out, "vim_keys", c->vim_keys ? "true" : "false", 0);
+    put_line(out, "mouse", c->mouse ? "true" : "false", 0);
     buf_putc(out, '\n');
     put_line(out, "mode", glyph_mode_name(c->mode), 1);
     put_line(out, "palette", c->palette, 1);

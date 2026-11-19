@@ -11,7 +11,7 @@
 #define INFO_H 11
 #define CONTROLS_H (CTL_COUNT + 2)
 #define MIN_HISTOGRAM_H 5
-#define TIMELINE_H 3
+#define TIMELINE_H 4
 #define MIN_COLS 80
 #define MIN_ROWS 24
 #define ZOOM_STEP 1.25
@@ -54,6 +54,9 @@ static void finish_export(App *a);
 static void end_export(App *a);
 static int prompt_key(App *a, int key);
 static void reload_config(App *a);
+static void zoom_at(App *a, double factor, int cx, int cy);
+static void seek_to_x(App *a, int x);
+static void handle_mouse(App *a);
 
 static double now_ms(void) {
     struct timespec t;
@@ -254,6 +257,7 @@ static void layout(App *a) {
 static void draw(App *a) {
     const Theme *t = a->theme;
     double now = now_ms();
+    Rect none = {0, 0, 0, 0};
 
     // A terminal that is still busy with the last frame would only queue
     // this one, and the picture would fall behind: wait for its answer
@@ -274,6 +278,11 @@ static void draw(App *a) {
     a->screen->tolerance = a->playing ? PLAY_TOLERANCE : 0;
     viewer_update(a);
     screen_clear(a->screen, t->main_fg, t->main_bg);
+
+    // Views record where their clickable parts land; hidden ones have none
+    a->hit_play = a->hit_bar = a->hit_slower = a->hit_faster = none;
+    a->hit_repeat = a->hit_opt_tabs = a->hit_opt_list = none;
+    a->hit_menu = a->hit_picker = none;
     if (a->overlay == OVERLAY_HELP) {
         view_help(a);
     } else if (a->overlay == OVERLAY_OPTIONS) {
@@ -313,6 +322,14 @@ static void draw(App *a) {
         a->frame_drawn = 1;
         a->frames_out++;
         a->last_frame_ms = now;
+        if (a->playing) {
+            // Render and send time of this frame, for the timeline graph
+            a->frame_ms[a->frame_ms_head] = now_ms() - now;
+            a->frame_ms_head = (a->frame_ms_head + 1) % FRAME_HISTORY;
+            if (a->frame_ms_count < FRAME_HISTORY) {
+                a->frame_ms_count++;
+            }
+        }
     }
     if (now - a->fps_window_ms >= 1000.0) {
         a->out_fps = a->frames_out * 1000.0 / (now - a->fps_window_ms);
@@ -496,7 +513,190 @@ static int handle_playback_key(App *a, int key) {
     return 0;
 }
 
+// Zoom by factor, keeping the image point under cell (cx, cy) in place
+static void zoom_at(App *a, double factor, int cx, int cy) {
+    double old = a->zoom;
+    double nz = old * factor;
+    nz = nz < 1.0 ? 1.0 : nz > ZOOM_MAX ? ZOOM_MAX : nz;
+    if (nz == old) {
+        return;
+    }
+    if (a->art && cx >= a->art_x && cy >= a->art_y &&
+        cx < a->art_x + a->art->cols && cy < a->art_y + a->art->rows) {
+        double fx = (cx - a->art_x + 0.5) / a->art->cols;
+        double fy = (cy - a->art_y + 0.5) / a->art->rows;
+        double ix = a->vis_x + fx * a->vis_w, iy = a->vis_y + fy * a->vis_h;
+        double nw = a->vis_w * old / nz, nh = a->vis_h * old / nz;
+        a->pan_x = ix - (fx - 0.5) * nw;
+        a->pan_y = iy - (fy - 0.5) * nh;
+    }
+    a->zoom = nz;
+    a->dirty = 1;
+}
+
+// Seek to the point of the timeline bar under column x
+static void seek_to_x(App *a, int x) {
+    Rect b = a->hit_bar;
+    if (b.w < 2 || a->duration_us <= 0) {
+        return;
+    }
+    double f = (double)(x - b.x) / (b.w - 1);
+    f = f < 0 ? 0 : f > 1 ? 1 : f;
+    seek_to(a, (int64_t)(f * a->duration_us));
+}
+
+static void handle_mouse(App *a) {
+    MouseEvent ev;
+    term_mouse(&ev);
+    int wheel = ev.button == MOUSE_WHEEL_UP     ? 1
+              : ev.button == MOUSE_WHEEL_DOWN ? -1
+                                              : 0;
+    int click = ev.button == MOUSE_LEFT && ev.press && !ev.motion;
+    if (!ev.press) {
+        a->drag = DRAG_NONE;
+        return;
+    }
+    if (a->prompting) {
+        return;
+    }
+
+    if (a->overlay == OVERLAY_MENU) {
+        Rect m = a->hit_menu;
+        if (click && rect_contains(rect_inner(m), ev.x, ev.y)) {
+            a->menu_sel = ev.y - m.y - 1;
+            handle_key(a, KEY_ENTER);
+        } else if (click && !rect_contains(m, ev.x, ev.y)) {
+            a->overlay = OVERLAY_NONE;
+        } else if (wheel) {
+            handle_key(a, wheel > 0 ? KEY_UP : KEY_DOWN);
+        }
+        return;
+    }
+    if (a->overlay == OVERLAY_HELP) {
+        if (wheel) {
+            help_key(a, wheel > 0 ? KEY_UP : KEY_DOWN);
+        }
+        return;
+    }
+    if (a->overlay == OVERLAY_OPTIONS) {
+        Rect tabs = a->hit_opt_tabs, list = a->hit_opt_list;
+        if (wheel) {
+            options_key(a, wheel > 0 ? KEY_UP : KEY_DOWN);
+        } else if (click && rect_contains(tabs, ev.x, ev.y)) {
+            options_key(a, '1' + (ev.x - tabs.x) * 4 / tabs.w);
+        } else if (click && rect_contains(list, ev.x, ev.y)) {
+            // Two lines per option: name, then "← value →"
+            int k = (ev.y - list.y) / 2 + a->opt_scroll;
+            int on_value = (ev.y - list.y) % 2 == 1;
+            int before = a->opt_sel;
+            while (a->opt_sel != k) {
+                options_key(a, a->opt_sel < k ? KEY_DOWN : KEY_UP);
+                if (a->opt_sel == before) {
+                    break;      // past the last option
+                }
+                before = a->opt_sel;
+            }
+            if (on_value && ev.x <= list.x + 2) {
+                options_key(a, KEY_LEFT);
+            } else if (on_value && ev.x >= list.x + list.w - 3) {
+                options_key(a, KEY_RIGHT);
+            }
+        }
+        return;
+    }
+    if (a->overlay == OVERLAY_PICKER) {
+        Rect in = a->hit_picker;
+        if (wheel) {
+            for (int i = 0; i < 3; i++) {
+                picker_key(a, wheel > 0 ? KEY_UP : KEY_DOWN);
+            }
+        } else if (click && rect_contains(in, ev.x, ev.y)) {
+            int row = ev.y - in.y + a->picker_scroll;
+            if (row >= a->picker_count) {
+                return;
+            }
+            double now = now_ms();
+            int twice = row == a->last_click_row && now - a->last_click_ms < 400;
+            a->picker_sel = row;
+            a->last_click_row = row;
+            a->last_click_ms = now;
+            if (twice && picker_key(a, KEY_ENTER)) {
+                a->overlay = OVERLAY_NONE;
+            }
+        }
+        return;
+    }
+
+    // Main screen: timeline buttons and bar
+    if (click && rect_contains(a->hit_play, ev.x, ev.y)) {
+        handle_key(a, ' ');
+        return;
+    }
+    if (click && rect_contains(a->hit_slower, ev.x, ev.y)) {
+        handle_key(a, '<');
+        return;
+    }
+    if (click && rect_contains(a->hit_faster, ev.x, ev.y)) {
+        handle_key(a, '>');
+        return;
+    }
+    if (click && rect_contains(a->hit_repeat, ev.x, ev.y)) {
+        handle_key(a, 'R');
+        return;
+    }
+    if ((click && rect_contains(a->hit_bar, ev.x, ev.y)) ||
+        (ev.motion && a->drag == DRAG_SEEK)) {
+        a->drag = DRAG_SEEK;
+        seek_to_x(a, ev.x);
+        return;
+    }
+
+    // Controls: click a row to select it, its arrows to change it, or roll
+    // the wheel over it
+    Rect in = rect_inner(a->r_controls);
+    if (!a->compact && rect_contains(in, ev.x, ev.y)) {
+        int c = ev.y - in.y + a->scroll;
+        if (c >= CTL_COUNT) {
+            return;
+        }
+        int vx = in.x + 1 + CONTROLS_LABEL_W;
+        if (wheel) {
+            a->selected = c;
+            controls_change(a, c, wheel);
+        } else if (click) {
+            a->selected = c;
+            if (ev.x >= vx && ev.x <= vx + 1) {
+                controls_change(a, c, -1);
+            } else if (ev.x >= in.x + in.w - 3) {
+                controls_change(a, c, 1);
+            }
+        }
+        return;
+    }
+
+    // Viewer: the wheel zooms toward the cursor, dragging pans
+    Rect view = a->compact ? a->r_viewer : rect_inner(a->r_viewer);
+    if (wheel && rect_contains(view, ev.x, ev.y)) {
+        zoom_at(a, wheel > 0 ? ZOOM_STEP : 1 / ZOOM_STEP, ev.x, ev.y);
+    } else if (click && rect_contains(view, ev.x, ev.y)) {
+        a->drag = DRAG_PAN;
+        a->drag_x = ev.x;
+        a->drag_y = ev.y;
+        a->drag_pan_x = a->pan_x;
+        a->drag_pan_y = a->pan_y;
+    } else if (ev.motion && a->drag == DRAG_PAN && a->art) {
+        // The image follows the pointer
+        a->pan_x = a->drag_pan_x - (ev.x - a->drag_x) * a->vis_w / a->art->cols;
+        a->pan_y = a->drag_pan_y - (ev.y - a->drag_y) * a->vis_h / a->art->rows;
+        a->dirty = 1;
+    }
+}
+
 static void handle_key(App *a, int key) {
+    if (key == KEY_MOUSE) {
+        handle_mouse(a);
+        return;
+    }
     if (key == KEY_TERM_OK) {
         // Smoothed so the info panel does not jitter
         double lag = now_ms() - a->ack_sent_ms;
@@ -826,6 +1026,8 @@ static void reload_config(App *a) {
     a->config.rounded = c.rounded;
     a->config.vim_keys = a->vim_keys = c.vim_keys;
     a->config.max_fps = a->max_fps = c.max_fps;
+    a->config.mouse = c.mouse;
+    term_set_mouse(c.mouse);
     app_apply_theme(a);
     if (bad) {
         snprintf(a->message, sizeof(a->message), "%s", warn);
@@ -903,6 +1105,7 @@ int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
         app_free(&a);
         return 1;
     }
+    term_set_mouse(a.config.mouse);
     int cols, rows;
     term_size(&cols, &rows, &a.cell_aspect);
     a.screen = screen_new(cols, rows, ui_depth);

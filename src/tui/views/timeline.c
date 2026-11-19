@@ -7,6 +7,65 @@
 #define CH_DONE  0x2501     // ━
 #define CH_LEFT  0x2500     // ─
 #define CH_KNOB  0x25CF     // ●
+#define MAX_CELLS 128
+
+// Braille dots from the bottom up, left and right column
+static const uint8_t DOTS_LEFT[4] = {0x40, 0x04, 0x02, 0x01};
+static const uint8_t DOTS_RIGHT[4] = {0x80, 0x20, 0x10, 0x08};
+
+// Prototype
+static void frame_graph(App *a, int x, int y, int w);
+
+// One row of braille bars: how long the latest frames took against the
+// frame budget, green under half, yellow under 80%, red above, like btop
+static void frame_graph(App *a, int x, int y, int w) {
+    const Theme *t = a->theme;
+    Screen *s = a->screen;
+    double fps = a->fps > 0 ? a->fps : 30;
+    double budget = 1000.0 / (fps * a->speed);
+    char text[48];
+    double last = a->frame_ms_count
+                      ? a->frame_ms[(a->frame_ms_head + FRAME_HISTORY - 1) %
+                                    FRAME_HISTORY]
+                      : 0;
+    snprintf(text, sizeof(text), "%.1f of %.0f ms", last, budget);
+    int tw = text_width(text);
+    x += draw_text(s, x, y, 6, "frame ", t->inactive_fg, t->main_bg, 0);
+    int cells = w - 6 - tw - 1;
+    if (cells > MAX_CELLS) {
+        cells = MAX_CELLS;
+    }
+    draw_text(s, x + cells + 1, y, tw, text, t->main_fg, t->main_bg, 0);
+    if (cells < 1) {
+        return;
+    }
+
+    // The newest frame is at the right end
+    for (int c = 0; c < cells; c++) {
+        uint8_t bits = 0;
+        double worst = 0;
+        for (int half = 0; half < 2; half++) {
+            int back = (cells - 1 - c) * 2 + (1 - half);   // frames ago
+            if (back >= a->frame_ms_count) {
+                continue;
+            }
+            double v = a->frame_ms[(a->frame_ms_head + FRAME_HISTORY - 1 - back) %
+                                   FRAME_HISTORY] / budget;
+            worst = v > worst ? v : worst;
+            int dots = v <= 0 ? 0 : v >= 1 ? 4 : 1 + (int)(v * 3.999);
+            for (int k = 0; k < dots; k++) {
+                bits |= half ? DOTS_RIGHT[k] : DOTS_LEFT[k];
+            }
+        }
+        if (!bits) {
+            continue;   // no frames that far back yet
+        }
+        uint32_t fg = worst < 0.5 ? t->graph_low
+                    : worst < 0.8 ? t->graph_mid
+                                  : t->graph_high;
+        screen_put(s, x + c, y, 0x2800 + bits, fg, t->main_bg, 0);
+    }
+}
 
 void format_time(int64_t us, int tenths, char *out, size_t n) {
     if (us < 0) {
@@ -38,8 +97,12 @@ void view_timeline(App *a) {
     int lw = text_width(label) + 2;
     const char *loop = a->loop ? "Repeat on" : "Repeat off";
     int rw = text_width(loop) + 2;
-    draw_border_label(s, r.x + r.w - 2 - rw, r.y, loop, "R", t);
-    draw_border_label(s, r.x + r.w - 3 - rw - lw, r.y, label, "<>", t);
+    int rx = r.x + r.w - 2 - rw, lx = r.x + r.w - 3 - rw - lw;
+    draw_border_label(s, rx, r.y, loop, "R", t);
+    draw_border_label(s, lx, r.y, label, "<>", t);
+    a->hit_repeat = (Rect){rx, r.y, rw, 1};
+    a->hit_slower = (Rect){lx + 1, r.y, 1, 1};
+    a->hit_faster = (Rect){lx + lw - 2, r.y, 1, 1};
 
     // ▶ 0:12.3 ━━━━━━━━━●─────────── 1:47.0
     Rect in = rect_inner(r);
@@ -56,6 +119,7 @@ void view_timeline(App *a) {
     int x = in.x + 1, y = in.y;
     screen_put(s, x, y, a->playing ? CH_PLAY : CH_PAUSE, t->hi_fg, t->main_bg,
                ATTR_BOLD);
+    a->hit_play = (Rect){x, y, 1, 1};
     x += 2;
     x += draw_text(s, x, y, in.w, now, t->main_fg, t->main_bg, 0) + 1;
     int right = in.x + in.w - 1 - text_width(total);
@@ -65,6 +129,10 @@ void view_timeline(App *a) {
     if (bar_w < 2) {
         return;
     }
+    if (in.h >= 2) {
+        frame_graph(a, in.x + 1, in.y + 1, in.w - 2);
+    }
+    a->hit_bar = (Rect){x, y, bar_w, 1};
     int done = 0;
     if (a->duration_us > 0) {
         done = (int)((double)pos / a->duration_us * (bar_w - 1) + 0.5);

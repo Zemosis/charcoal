@@ -31,6 +31,10 @@ void draw_set_rounded(int on) {
     rounded = on;
 }
 
+int rect_contains(Rect r, int x, int y) {
+    return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
 Rect rect_inner(Rect r) {
     Rect in = {r.x + 1, r.y + 1, r.w - 2, r.h - 2};
     if (in.w < 0) {

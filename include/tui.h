@@ -36,8 +36,25 @@ enum {
     KEY_F1,
     KEY_F2,
     KEY_BACKTAB,        // Shift+Tab
-    KEY_TERM_OK         // the terminal answered a status request (ESC [5n)
+    KEY_TERM_OK,        // the terminal answered a status request (ESC [5n)
+    KEY_MOUSE           // a mouse event; term_mouse says which
 };
+
+// Mouse buttons as terminals report them
+#define MOUSE_LEFT 0
+#define MOUSE_MIDDLE 1
+#define MOUSE_RIGHT 2
+#define MOUSE_NONE 3            // motion with no button held
+#define MOUSE_WHEEL_UP 64
+#define MOUSE_WHEEL_DOWN 65
+
+typedef struct MouseEvent {
+    int x;              // cell, from 0
+    int y;
+    int button;         // MOUSE_*
+    int press;          // 1 press (or motion), 0 release
+    int motion;         // moved with the button held
+} MouseEvent;
 
 // What term_wait woke up for, as bits
 #define TERM_EV_INPUT  0x01
@@ -116,6 +133,15 @@ int term_wait(int timeout_ms, int extra_fd);
 
 // Next decoded key from input already read, KEY_NONE when there is none
 int term_read_key(void);
+
+// Turn mouse reporting on or off (kept across Ctrl+Z)
+void term_set_mouse(int on);
+
+// The event behind the last KEY_MOUSE
+void term_mouse(MouseEvent *ev);
+
+// Whether (x, y) falls inside r
+int rect_contains(Rect r, int x, int y);
 
 // Write all of b to the terminal
 void term_write(const Buf *b);

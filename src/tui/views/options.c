@@ -12,6 +12,7 @@ typedef enum Option {
     OPT_THEME_BG,
     OPT_ROUNDED,
     OPT_VIM,
+    OPT_MOUSE,
     OPT_MODE,
     OPT_PALETTE,
     OPT_FIT,
@@ -51,6 +52,12 @@ static const OptionInfo OPTIONS[OPT_COUNT] = {
     {0, "Vim keys",
      "Enable vim keys.\n\nh j k l move through the controls and change them, "
      "H J K L pan when zoomed in.\n\nWith vim keys off, h opens the help."},
+    {0, "Mouse",
+     "Use the mouse.\n\nWheel: zoom toward the cursor, or change the "
+     "control under it. Drag: pan a zoomed image, or scrub the timeline. "
+     "Click: controls, buttons, tabs and lists; double click opens in the "
+     "file picker.\n\nFalse leaves the mouse to the terminal (selecting "
+     "text)."},
     {1, "Glyph mode",
      "Glyph mode used when a file opens.\n\nhalf: two pixels per cell, the "
      "most detail.\nquad: four pixels per cell.\nbraille: eight dots per "
@@ -147,6 +154,9 @@ static void option_value(const App *a, int opt, char *out, size_t n) {
     case OPT_VIM:
         snprintf(out, n, "%s", c->vim_keys ? "True" : "False");
         break;
+    case OPT_MOUSE:
+        snprintf(out, n, "%s", c->mouse ? "True" : "False");
+        break;
     case OPT_MODE:
         snprintf(out, n, "%s", glyph_mode_name(c->mode));
         break;
@@ -219,6 +229,10 @@ static void option_change(App *a, int opt, int dir) {
     case OPT_VIM:
         c->vim_keys = !c->vim_keys;
         a->vim_keys = c->vim_keys;
+        break;
+    case OPT_MOUSE:
+        c->mouse = !c->mouse;
+        term_set_mouse(c->mouse);
         break;
     case OPT_MODE:
         c->mode = (GlyphMode)cycle(c->mode, dir, MODE_COUNT);
@@ -359,6 +373,7 @@ void view_options(App *a) {
 
     // Tab row: the current one in [brackets], the others with their number
     int tab_w = in.w / TAB_COUNT;
+    a->hit_opt_tabs = (Rect){in.x, in.y, tab_w * TAB_COUNT, 1};
     for (int i = 0; i < TAB_COUNT; i++) {
         char label[32];
         int cur = i == a->opt_tab;
@@ -394,6 +409,8 @@ void view_options(App *a) {
     int first = tab_first(a->opt_tab), count = tab_count(a->opt_tab);
     int list_y = div_y + 1, fit_n = (in.y + in.h - list_y) / 2;
     int scroll = a->opt_sel >= fit_n ? a->opt_sel - fit_n + 1 : 0;
+    a->hit_opt_list = (Rect){in.x, list_y, LIST_W, fit_n * 2};
+    a->opt_scroll = scroll;
     for (int k = 0; k < fit_n && scroll + k < count; k++) {
         int opt = first + scroll + k, sel = scroll + k == a->opt_sel;
         int y = list_y + k * 2;

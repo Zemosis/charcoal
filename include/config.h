@@ -20,6 +20,7 @@ typedef struct Config {
                             // terminal's own
     int rounded;            // rounded box corners
     int vim_keys;
+    int mouse;              // clicks, wheel and drags in the viewer
 
     // Render defaults
     GlyphMode mode;
