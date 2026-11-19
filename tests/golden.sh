@@ -47,6 +47,7 @@ anim_gif_past_end    | samples/anim.gif -m ascii -c mono -w 24 -t 60
 anim_apng_frame3     | samples/anim.apng -m ascii -c mono -w 24 --frame 3
 clip_webm_time       | samples/clip.webm -m quad -c true -w 24 -t 0.55
 clip_webm_frame7     | samples/clip.webm -m ascii -c mono -w 24 --frame 7
+exif_rotated         | samples/rotated.jpg -m half -c 256 -w 12
 anim_webp_frame3     | samples/anim.webp -m ascii -c mono -w 24 --frame 3
 anim_webp_time       | samples/anim.webp -m half -c true -w 24 -t 0.5
 '
