@@ -41,6 +41,9 @@ void buf_clear(Buf *b) {
 }
 
 void buf_push(Buf *b, const char *s, size_t n) {
+    if (n == 0) {
+        return;     // an empty buffer has no data to copy into yet
+    }
     buf_reserve(b, n);
     memcpy(b->data + b->len, s, n);
     b->len += n;
