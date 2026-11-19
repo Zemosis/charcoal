@@ -1,7 +1,9 @@
 #include "app.h"
 #include "buf.h"
+#include "config.h"
 #include "media.h"
 #include "render.h"
+#include "tui.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +35,9 @@ typedef struct Args {
     double time;        // --time in seconds, -1 when not given
     long frame;         // --frame index, -1 when not given
     int loop;
+    FitMode fit;
+    Config config;      // the config file, which the options start from
+    char warn[256];     // problems found in the config file
 } Args;
 
 // Prototype
@@ -55,13 +60,16 @@ static void usage(FILE *out) {
         "Usage:\n"
         "  charcoal <file> [options]                 open the viewer\n"
         "  charcoal render <file> [options]          print once and exit\n"
-        "  charcoal export <file> -o <out> [options] write .txt or .ans\n"
+        "  charcoal export <file> -o <out> [options] write .txt, .ans or .html\n"
         "\n"
         "Options:\n"
         "  -m, --mode MODE        half (default), ascii, quad, braille, edges\n"
         "  -p, --palette NAME     standard, detailed, simple, blocks,\n"
         "                         or your own ramp, darkest first\n"
         "  -c, --color DEPTH      auto (default), true, 256, 16, mono\n"
+        "      --fit KIND         contain (default), cover, stretch (viewer)\n"
+        "      --theme NAME       gruvbox_dark, nord, tokyo_night, mono, tty,\n"
+        "                         or a file in ~/.config/charcoal/themes\n"
         "  -d, --dither KIND      none (default), floyd, bayer\n"
         "  -w, --width N          output width in characters\n"
         "  -H, --height N         output height in characters\n"
@@ -77,7 +85,9 @@ static void usage(FILE *out) {
         "  -h, --help             show this help\n"
         "  -V, --version          show the version\n"
         "\n"
-        "Color auto-detection reads COLORTERM and TERM; NO_COLOR forces mono.\n",
+        "Color auto-detection reads COLORTERM and TERM; NO_COLOR forces mono.\n"
+        "Defaults come from ~/.config/charcoal/charcoal.conf (press o in the\n"
+        "viewer to change them); options here override it.\n",
         CHARCOAL_VERSION);
 }
 
@@ -144,11 +154,24 @@ static ColorDepth detect_color(void) {
 // Fill a from argv, returns 0 on success, 1 to exit cleanly, -1 on error
 static int parse_args(int argc, char **argv, Args *a) {
     memset(a, 0, sizeof(*a));
-    render_opts_default(&a->opts);
     a->time = -1;
     a->frame = -1;
-    a->loop = 1;
-    a->opts.color = detect_color();
+
+    // Defaults, then the config file, then the command line
+    config_load(&a->config, a->warn, sizeof(a->warn));
+    const Config *c = &a->config;
+    render_opts_default(&a->opts);
+    a->opts.mode = c->mode;
+    a->opts.palette = config_palette(c);
+    a->opts.invert = c->invert;
+    a->opts.color = c->color_auto ? detect_color() : c->color;
+    a->opts.dither = c->dither;
+    a->opts.brightness = c->brightness;
+    a->opts.contrast = c->contrast;
+    a->opts.gamma = c->gamma;
+    a->opts.saturation = c->saturation;
+    a->loop = c->loop;
+    a->fit = c->fit;
 
     int i = 1;
     if (i < argc && strcmp(argv[i], "render") == 0) {
@@ -234,6 +257,16 @@ static int parse_args(int argc, char **argv, Args *a) {
             }
         } else if ((v = option_value(argc, argv, &i, arg, "-o", "--output"))) {
             a->output = v;
+        } else if ((v = option_value(argc, argv, &i, arg, "", "--fit"))) {
+            int f = fit_from_name(v);
+            if (f < 0) {
+                fprintf(stderr, "charcoal: unknown fit '%s' (contain, cover, "
+                        "stretch)\n", v);
+                return -1;
+            }
+            a->fit = (FitMode)f;
+        } else if ((v = option_value(argc, argv, &i, arg, "", "--theme"))) {
+            snprintf(a->config.theme, sizeof(a->config.theme), "%s", v);
         } else if ((v = option_value(argc, argv, &i, arg, "-t", "--time"))) {
             if (parse_double(v, "--time", 0, 1e7, &a->time)) {
                 return -1;
@@ -314,18 +347,24 @@ int main(int argc, char **argv) {
     }
 
     struct stat st;
+    int viewer = a.cmd == CMD_VIEW && isatty(STDIN_FILENO) &&
+                 isatty(STDOUT_FILENO);
+    if (a.warn[0] && !viewer) {
+        fprintf(stderr, "charcoal: warning: %s\n", a.warn);
+    }
     if (stat(a.input, &st) == 0 && S_ISDIR(st.st_mode)) {
         fprintf(stderr, "charcoal: %s is a directory\n", a.input);
         return 1;
     }
 
     // The viewer needs a terminal on both ends; otherwise print once
-    if (a.cmd == CMD_VIEW && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
+    if (viewer) {
         if (a.width || a.height) {
             fprintf(stderr, "charcoal: -w and -H are for render and export\n");
             return 1;
         }
-        return app_run(a.input, &a.opts, detect_color(), a.loop);
+        return app_run(a.input, &a.opts, a.fit, a.loop, &a.config,
+                       detect_color(), a.warn);
     }
 
     char err[512];
@@ -389,12 +428,20 @@ int main(int argc, char **argv) {
     buf_init(&out);
     rc = 0;
     if (a.cmd == CMD_EXPORT) {
-        if (has_suffix(a.output, ".ans")) {
+        if (has_suffix(a.output, ".html")) {
+            // The page takes the theme's colors for the terminal defaults
+            Theme t;
+            char twarn[160];
+            theme_load(a.config.theme, &t, twarn, sizeof(twarn));
+            export_html(g, &out, t.main_fg,
+                        a.config.theme_background ? t.main_bg
+                                                  : CELL_COLOR_DEFAULT);
+        } else if (has_suffix(a.output, ".ans")) {
             export_ansi(g, &out);
         } else if (has_suffix(a.output, ".txt")) {
             export_txt(g, &out);
         } else {
-            fprintf(stderr, "charcoal: export supports .txt and .ans for now\n");
+            fprintf(stderr, "charcoal: export writes .txt, .ans or .html\n");
             rc = 1;
         }
         FILE *file = rc ? NULL : fopen(a.output, "w");
