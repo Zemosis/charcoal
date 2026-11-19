@@ -46,7 +46,14 @@ static void refilter(App *a) {
     if (!a->picker_view) {
         return;
     }
+    // Choosing a folder: a "save here" row (-1) first, then folders only
+    if (a->picker_folders) {
+        a->picker_view[a->picker_count++] = -1;
+    }
     for (int i = 0; i < a->picker_list.count; i++) {
+        if (a->picker_folders && !a->picker_list.items[i].is_dir) {
+            continue;
+        }
         if (matches(a->picker_list.items[i].name, a->picker_filter)) {
             a->picker_view[a->picker_count++] = i;
         }
@@ -58,7 +65,8 @@ static void refilter(App *a) {
 
 static void select_name(App *a, const char *name) {
     for (int i = 0; i < a->picker_count; i++) {
-        if (strcmp(a->picker_list.items[a->picker_view[i]].name, name) == 0) {
+        if (a->picker_view[i] >= 0 &&
+            strcmp(a->picker_list.items[a->picker_view[i]].name, name) == 0) {
             a->picker_sel = i;
             return;
         }
@@ -85,7 +93,8 @@ static void go_to(App *a, const char *dir, const char *select) {
     a->picker_scroll = 0;
     refilter(a);
     // Skip ".." so the first real entry is selected by default
-    if (a->picker_count > 1 && strcmp(a->picker_list.items[0].name, "..") == 0) {
+    if (!a->picker_folders && a->picker_count > 1 &&
+        strcmp(a->picker_list.items[0].name, "..") == 0) {
         a->picker_sel = 1;
     }
     if (select) {
@@ -108,7 +117,14 @@ static void open_selected(App *a, int *close) {
     if (a->picker_count == 0) {
         return;
     }
-    const FileEntry *e = &a->picker_list.items[a->picker_view[a->picker_sel]];
+    int idx = a->picker_view[a->picker_sel];
+    if (idx < 0) {
+        // "save here": the export dialog takes this folder
+        path_abbrev(a->picker_dir, a->export_dir, sizeof(a->export_dir));
+        *close = 1;
+        return;
+    }
+    const FileEntry *e = &a->picker_list.items[idx];
     if (strcmp(e->name, "..") == 0) {
         go_up(a);
         return;
@@ -160,7 +176,7 @@ void view_picker(App *a) {
     }
     Rect box = {(s->cols - w) / 2, 2, w, h};
     draw_fill(s, box, t->main_fg, t->main_bg);
-    draw_box(s, box, t, -1, "open");
+    draw_box(s, box, t, -1, a->picker_folders ? "save to" : "open");
 
     // The folder at the right of the top border, keeping its end in view
     const char *dir = a->picker_dir;
@@ -187,9 +203,18 @@ void view_picker(App *a) {
         if (i >= a->picker_count) {
             break;
         }
-        const FileEntry *e = &a->picker_list.items[a->picker_view[i]];
         int sel = i == a->picker_sel;
         int y = in.y + row;
+        if (a->picker_view[i] < 0) {
+            uint32_t bg = sel ? t->selected_bg : t->main_bg;
+            uint32_t fg = sel ? t->selected_fg : t->hi_fg;
+            uint8_t attr = sel && s->depth == COLOR_MONO ? ATTR_REVERSE : 0;
+            draw_fill(s, (Rect){in.x, y, in.w, 1}, fg, bg);
+            draw_text(s, in.x + 1, y, in.w - 2, "\u2193 save in this folder", fg,
+                      bg, attr | ATTR_BOLD);
+            continue;
+        }
+        const FileEntry *e = &a->picker_list.items[a->picker_view[i]];
         uint32_t bg = sel ? t->selected_bg : t->main_bg;
         uint32_t fg = sel ? t->selected_fg : e->is_dir ? t->title : t->main_fg;
         uint8_t attr = sel && s->depth == COLOR_MONO ? ATTR_REVERSE : 0;
@@ -228,7 +253,8 @@ void view_picker(App *a) {
     }
     int y1 = box.y + box.h - 1;
     draw_border_label(s, box.x + 2, y1, filter, NULL, t);
-    const char *keys = "Enter open · ← up · Esc";
+    const char *keys = a->picker_folders ? "Enter choose · ← up · Esc back"
+                                         : "Enter open · ← up · Esc";
     if (box.w > text_width(filter) + text_width(keys) + 10) {
         draw_border_label(s, box.x + box.w - 4 - text_width(keys), y1, keys, NULL,
                           t);
@@ -293,8 +319,9 @@ int picker_key(App *a, int key) {
         if (key >= 0x20 && key < 0x7F && len + 1 < sizeof(a->picker_filter)) {
             a->picker_filter[len] = (char)key;
             a->picker_filter[len + 1] = '\0';
-            a->picker_sel = 0;
             refilter(a);
+            // The first match, not the "save here" row
+            a->picker_sel = a->picker_folders && a->picker_count > 1 ? 1 : 0;
         }
         break;
     }

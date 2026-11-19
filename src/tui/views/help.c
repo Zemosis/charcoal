@@ -37,7 +37,7 @@ static const HelpEntry ENTRIES[] = {
     {"t, T", NULL, "Contrast up / down."},
     {"g, G", NULL, "Gamma up / down."},
     {"s, S", NULL, "Saturation up / down."},
-    {"e", NULL, "Export the view to .html, .ans or .txt."},
+    {"e", NULL, "Export the view; Ctrl+O there picks the folder."},
     {"n, N", NULL, "Next / previous image or video in the folder."},
     {"O", NULL, "Open another file (type to filter)."},
     {"+, -", NULL, "Zoom in / out."},

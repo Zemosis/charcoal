@@ -157,8 +157,11 @@ typedef struct App {
     int picker_sel;
     int picker_scroll;
     char picker_filter[64];
-    int prompting;              // typing a file name to export to
-    char prompt[256];
+    int prompting;              // the export dialog is open
+    char prompt[256];           // its file name
+    char export_dir[1024];      // its folder, ~ allowed
+    int export_field;           // 0 = typing the file name, 1 = the folder
+    int picker_folders;         // the picker is choosing the export folder
     Grid *export_art;           // the view when e was pressed
     int export_resume;          // playback was on before the dialog
     char message[256];          // one-off note shown in the viewer border
@@ -185,6 +188,9 @@ typedef struct App {
     int opt_scroll;
     Rect hit_menu;
     Rect hit_picker;
+    Rect hit_export_dir;        // the export dialog's fields and button
+    Rect hit_export_file;
+    Rect hit_export_browse;
     int drag;                   // DRAG_*
     int drag_x;
     int drag_y;
@@ -232,6 +238,9 @@ void view_histogram(App *a);
 void view_options(App *a);
 void view_menu(App *a);
 void view_export(App *a);
+
+// Ctrl+O in the export dialog: pick its folder in the file picker
+void export_browse(App *a);
 
 // Esc menu: handle a key, returns a MENU_* entry, MENU_CLOSE, or -1
 int menu_key(App *a, int key);

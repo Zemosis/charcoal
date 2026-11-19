@@ -54,7 +54,8 @@ static int handle_playback_key(App *a, int key);
 static void handle_key(App *a, int key);
 static void handle_resize(App *a);
 static void start_export(App *a);
-static void finish_export(App *a);
+static int finish_export(App *a);
+static void edit_field(char *text, size_t cap, int key);
 static void end_export(App *a);
 static int prompt_key(App *a, int key);
 static void reload_config(App *a);
@@ -294,6 +295,7 @@ static void draw(App *a) {
     a->hit_play = a->hit_bar = a->hit_slower = a->hit_faster = none;
     a->hit_repeat = a->hit_opt_tabs = a->hit_opt_list = none;
     a->hit_menu = a->hit_picker = none;
+    a->hit_export_dir = a->hit_export_file = a->hit_export_browse = none;
     if (a->overlay == OVERLAY_HELP) {
         view_help(a);
     } else if (a->overlay == OVERLAY_OPTIONS) {
@@ -567,7 +569,15 @@ static void handle_mouse(App *a) {
         a->drag = DRAG_NONE;
         return;
     }
-    if (a->prompting) {
+    if (a->prompting && a->overlay != OVERLAY_PICKER) {
+        // Clicks pick a field or browse for the folder
+        if (click && rect_contains(a->hit_export_browse, ev.x, ev.y)) {
+            export_browse(a);
+        } else if (click && rect_contains(a->hit_export_dir, ev.x, ev.y)) {
+            a->export_field = 1;
+        } else if (click && rect_contains(a->hit_export_file, ev.x, ev.y)) {
+            a->export_field = 0;
+        }
         return;
     }
 
@@ -633,6 +643,7 @@ static void handle_mouse(App *a) {
             a->last_click_ms = now;
             if (twice && picker_key(a, KEY_ENTER)) {
                 a->overlay = OVERLAY_NONE;
+                a->picker_folders = 0;
             }
         }
         return;
@@ -725,7 +736,7 @@ static void handle_key(App *a, int key) {
         a->awaiting_ack = 0;
         return;
     }
-    if (a->prompting) {
+    if (a->prompting && a->overlay != OVERLAY_PICKER) {
         prompt_key(a, key);
         return;
     }
@@ -749,6 +760,7 @@ static void handle_key(App *a, int key) {
             a->running = 0;
         } else if (picker_key(a, key)) {
             a->overlay = OVERLAY_NONE;
+            a->picker_folders = 0;
         }
         return;
     }
@@ -944,6 +956,19 @@ static void start_export(App *a) {
     }
     snprintf(a->prompt, sizeof(a->prompt), "%s.html", stem);
 
+    // The folder saved to last time, else where charcoal was started
+    char dir[1024];
+    path_expand(a->config.export_dir, dir, sizeof(dir));
+    if (a->config.export_dir[0] && path_is_dir(dir)) {
+        snprintf(a->export_dir, sizeof(a->export_dir), "%s",
+                 a->config.export_dir);
+    } else {
+        char cwd[1024];
+        path_abbrev(getcwd(cwd, sizeof(cwd)) ? cwd : ".", a->export_dir,
+                    sizeof(a->export_dir));
+    }
+    a->export_field = 0;
+
     // Keep the view as it is now, and hold playback while typing
     grid_free(a->export_art);
     a->export_art = NULL;
@@ -974,74 +999,148 @@ static void end_export(App *a) {
     }
 }
 
-// Write the art on screen in the format the file name asks for
-static void finish_export(App *a) {
-    const char *name = a->prompt;
-    size_t n = strlen(name);
+// Write the art on screen to folder/name in the format the name asks for;
+// returns -1 to keep the dialog open so the name or folder can be fixed
+static int finish_export(App *a) {
     const Grid *art = a->export_art;
-    Buf out;
-    buf_init(&out);
     if (!art) {
         snprintf(a->message, sizeof(a->message), "nothing to export yet");
-        return;
+        return 0;
     }
-    if (n > 5 && strcmp(name + n - 5, ".html") == 0) {
+
+    // A name with a path of its own (/x, ~/x) ignores the folder field
+    char dir[1024], name[1024], path[2100];
+    path_expand(a->export_dir[0] ? a->export_dir : ".", dir, sizeof(dir));
+    path_expand(a->prompt, name, sizeof(name));
+    if (name[0] == '/') {
+        snprintf(path, sizeof(path), "%s", name);
+    } else {
+        snprintf(path, sizeof(path), "%s/%s", dir, name);
+    }
+    char parent[2100], shown[2100];
+    path_dir(path, parent, sizeof(parent));
+    if (!path_is_dir(parent)) {
+        path_abbrev(parent, shown, sizeof(shown));
+        snprintf(a->message, sizeof(a->message), "no folder %.200s", shown);
+        return -1;
+    }
+
+    Buf out;
+    buf_init(&out);
+    size_t n = strlen(path);
+    if (n > 5 && strcmp(path + n - 5, ".html") == 0) {
         export_html(art, &out, a->theme->main_fg, a->theme->main_bg);
-    } else if (n > 4 && strcmp(name + n - 4, ".ans") == 0) {
+    } else if (n > 4 && strcmp(path + n - 4, ".ans") == 0) {
         export_ansi(art, &out);
-    } else if (n > 4 && strcmp(name + n - 4, ".txt") == 0) {
+    } else if (n > 4 && strcmp(path + n - 4, ".txt") == 0) {
         export_txt(art, &out);
     } else {
-        snprintf(a->message, sizeof(a->message), "use .html, .ans or .txt");
+        snprintf(a->message, sizeof(a->message), "end the name with .html, .ans "
+                 "or .txt");
         buf_free(&out);
-        return;
+        return -1;
     }
-    FILE *f = fopen(name, "w");
+    FILE *f = fopen(path, "w");
     int ok = f && fwrite(out.data, 1, out.len, f) == out.len;
     if (f && fclose(f) != 0) {
         ok = 0;
     }
     buf_free(&out);
-    char cwd[200];
-    if (name[0] != '/' && getcwd(cwd, sizeof(cwd))) {
-        snprintf(a->message, sizeof(a->message),
-                 ok ? "saved %s/%s" : "cannot write %s/%s", cwd, name);
+
+    // Messages show the full path, ~ for home
+    char full[3200];
+    if (path[0] != '/') {
+        char cwd[1024];
+        snprintf(full, sizeof(full), "%s/%s",
+                 getcwd(cwd, sizeof(cwd)) ? cwd : ".", path);
     } else {
-        snprintf(a->message, sizeof(a->message),
-                 ok ? "saved %s" : "cannot write %s", name);
+        snprintf(full, sizeof(full), "%s", path);
     }
+    path_abbrev(full, shown, sizeof(shown));
+    snprintf(a->message, sizeof(a->message),
+             ok ? "saved %.200s" : "cannot write %.200s", shown);
+    if (!ok) {
+        return -1;
+    }
+
+    // Next time starts in this folder
+    char saved_dir[1024];
+    path_dir(full, parent, sizeof(parent));
+    path_abbrev(parent, saved_dir, sizeof(saved_dir));
+    if (strcmp(saved_dir, a->config.export_dir) != 0) {
+        char err[160];
+        snprintf(a->config.export_dir, sizeof(a->config.export_dir), "%s",
+                 saved_dir);
+        if (config_save(&a->config, err, sizeof(err)) != 0) {
+            snprintf(a->message, sizeof(a->message), "%s", err);
+        }
+    }
+    return 0;
 }
 
-// Typing into the export prompt, returns 1 when the key was used
-static int prompt_key(App *a, int key) {
-    size_t len = strlen(a->prompt);
-    if (key == KEY_ENTER) {
-        if (len) {
-            finish_export(a);
+// Typing, Backspace, Ctrl+U (clear) and Ctrl+W (back one word or folder)
+// for a text field
+static void edit_field(char *text, size_t cap, int key) {
+    size_t len = strlen(text);
+    if (key == KEY_CTRL_U) {
+        text[0] = '\0';
+    } else if (key == KEY_CTRL_W) {
+        // Back to the previous '/', as in a shell
+        while (len > 0 && text[len - 1] == '/') {
+            len--;
         }
-        end_export(a);
-    } else if (key == KEY_ESC || key == KEY_CTRL_C) {
-        end_export(a);
+        while (len > 0 && text[len - 1] != '/') {
+            len--;
+        }
+        text[len] = '\0';
     } else if (key == KEY_BACKSPACE) {
         // Remove the last whole UTF-8 character
-        while (len > 0 && ((unsigned char)a->prompt[len - 1] & 0xC0) == 0x80) {
+        while (len > 0 && ((unsigned char)text[len - 1] & 0xC0) == 0x80) {
             len--;
         }
         if (len > 0) {
             len--;
         }
-        a->prompt[len] = '\0';
+        text[len] = '\0';
     } else if (key >= 0x20 && key < KEY_UP && key != 0x7F) {
         Buf b;
         buf_init(&b);
         buf_utf8(&b, (uint32_t)key);
-        if (len + b.len < sizeof(a->prompt)) {
-            memcpy(a->prompt + len, b.data, b.len);
-            a->prompt[len + b.len] = '\0';
+        if (len + b.len < cap) {
+            memcpy(text + len, b.data, b.len);
+            text[len + b.len] = '\0';
         }
         buf_free(&b);
     }
+}
+
+// Keys in the export dialog: Tab switches field, Ctrl+O browses for the
+// folder; returns 1 when the key was used
+static int prompt_key(App *a, int key) {
+    if (key == KEY_ENTER) {
+        if (a->prompt[0] && finish_export(a) == 0) {
+            end_export(a);
+        }
+    } else if (key == KEY_ESC || key == KEY_CTRL_C) {
+        end_export(a);
+    } else if (key == KEY_TAB || key == KEY_BACKTAB || key == KEY_UP ||
+               key == KEY_DOWN) {
+        a->export_field = !a->export_field;
+    } else if (key == KEY_CTRL_O) {
+        export_browse(a);
+    } else if (a->export_field == 1) {
+        edit_field(a->export_dir, sizeof(a->export_dir), key);
+    } else {
+        edit_field(a->prompt, sizeof(a->prompt), key);
+    }
     return 1;
+}
+
+void export_browse(App *a) {
+    char dir[1024];
+    path_expand(a->export_dir, dir, sizeof(dir));
+    a->picker_folders = 1;
+    picker_open(a, path_is_dir(dir) ? dir : ".");
 }
 
 // Ctrl+R: read the config and theme files again

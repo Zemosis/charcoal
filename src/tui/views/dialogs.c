@@ -11,6 +11,8 @@ static const char *const MENU_ITEMS[MENU_COUNT] = {"Options", "Help", "Quit"};
 
 // Prototype
 static void draw_hint(Screen *s, int x, int y, const Theme *t);
+static void draw_field(Screen *s, int x, int y, int w, const char *text,
+                       int active, const Theme *t);
 
 void view_menu(App *a) {
     const Theme *t = a->theme;
@@ -81,14 +83,34 @@ static void draw_hint(Screen *s, int x, int y, const Theme *t) {
     draw_text(s, x, y, 7, " cancel", t->inactive_fg, t->main_bg, 0);
 }
 
+// A text field; the active one is a solid bar with a cursor, keeping the
+// end of long text in view
+static void draw_field(Screen *s, int x, int y, int w, const char *text,
+                       int active, const Theme *t) {
+    uint32_t fg = active ? t->selected_fg : t->main_fg;
+    uint32_t bg = active ? t->selected_bg : t->main_bg;
+    draw_fill(s, (Rect){x, y, w, 1}, fg, bg);
+    const char *shown = text;
+    int over = text_width(shown) + (active ? 1 : 0) - w;
+    uint32_t cp;
+    while (over-- > 0 && *shown) {
+        shown += utf8_decode(shown, &cp);
+    }
+    int n = draw_text(s, x, y, w, shown, fg, bg, 0);
+    if (active && n < w) {
+        screen_put(s, x + n, y, 0x2588, fg, bg, 0);
+    }
+}
+
 void view_export(App *a) {
     const Theme *t = a->theme;
     Screen *s = a->screen;
     int w = s->cols - 4 < 72 ? s->cols - 4 : 72;
-    if (w < 30 || s->rows < DIALOG_H) {
+    if (w < 36 || s->rows < DIALOG_H) {
         // Too small for a box: the status line is all there is
-        char line[300];
-        snprintf(line, sizeof(line), "export as: %s█", a->prompt);
+        char line[1400];
+        snprintf(line, sizeof(line), "export to: %s/%s█", a->export_dir,
+                 a->prompt);
         draw_fill(s, (Rect){0, s->rows - 1, s->cols, 1}, t->main_fg,
                   t->selected_bg);
         draw_text(s, 0, s->rows - 1, s->cols, line, t->selected_fg,
@@ -99,40 +121,37 @@ void view_export(App *a) {
     draw_fill(s, box, t->main_fg, t->main_bg);
     draw_box(s, box, t, -1, "export");
     Rect in = rect_inner(box);
-    int lx = in.x + 2, vx = in.x + 8, vw = in.w - 10;
+    int lx = in.x + 2, vx = in.x + 10, vw = in.w - 12;
+    int on_dir = a->export_field == 1;
 
-    // The file name field: a solid bar so it is clearly where typing goes
-    draw_text(s, lx, in.y + 1, 5, "File", t->inactive_fg, t->main_bg, 0);
-    draw_fill(s, (Rect){vx, in.y + 1, vw, 1}, t->selected_fg, t->selected_bg);
-    const char *shown = a->prompt;
-    int over = text_width(shown) + 1 - vw;
-    uint32_t cp;
-    while (over-- > 0) {
-        shown += utf8_decode(shown, &cp);   // keep the end in view
-    }
-    int n = draw_text(s, vx, in.y + 1, vw, shown, t->selected_fg,
-                      t->selected_bg, 0);
-    screen_put(s, vx + n, in.y + 1, 0x2588, t->selected_fg, t->selected_bg, 0);
+    // Folder, with a browse button; then the file name
+    const char *browse = "[browse]";
+    int bw = text_width(browse), fw = vw - bw - 1;
+    draw_text(s, lx, in.y + 1, 7, "Folder", on_dir ? t->hi_fg : t->inactive_fg,
+              t->main_bg, on_dir ? ATTR_BOLD : 0);
+    draw_field(s, vx, in.y + 1, fw, a->export_dir, on_dir, t);
+    draw_text(s, vx + fw + 1, in.y + 1, bw, browse, t->hi_fg, t->main_bg,
+              ATTR_BOLD);
+    draw_text(s, lx, in.y + 2, 7, "File", !on_dir ? t->hi_fg : t->inactive_fg,
+              t->main_bg, !on_dir ? ATTR_BOLD : 0);
+    draw_field(s, vx, in.y + 2, vw, a->prompt, !on_dir, t);
+    a->hit_export_dir = (Rect){lx, in.y + 1, vx + fw - lx, 1};
+    a->hit_export_browse = (Rect){vx + fw + 1, in.y + 1, bw, 1};
+    a->hit_export_file = (Rect){lx, in.y + 2, vx + vw - lx, 1};
 
-    // Where it lands: the folder of the path, relative to where charcoal runs
-    char cwd[512], where[600];
-    if (!getcwd(cwd, sizeof(cwd))) {
-        snprintf(cwd, sizeof(cwd), ".");
-    }
-    const char *slash = strrchr(a->prompt, '/');
-    if (a->prompt[0] == '/') {
-        snprintf(where, sizeof(where), "%.*s",
-                 slash == a->prompt ? 1 : (int)(slash - a->prompt), a->prompt);
-    } else if (slash) {
-        snprintf(where, sizeof(where), "%s/%.*s", cwd, (int)(slash - a->prompt),
-                 a->prompt);
-    } else {
-        snprintf(where, sizeof(where), "%s", cwd);
-    }
-    draw_text(s, lx, in.y + 2, 5, "in", t->inactive_fg, t->main_bg, 0);
-    draw_text(s, vx, in.y + 2, vw, where, t->main_fg, t->main_bg, 0);
-
-    draw_text(s, lx, in.y + 4, 20, ".html .ans .txt", t->inactive_fg,
-              t->main_bg, 0);
+    // Keys, and the formats the name can end with
+    int x = lx;
+    x += draw_text(s, x, in.y + 4, 3, "Tab", t->hi_fg, t->main_bg, ATTR_BOLD);
+    x += draw_text(s, x, in.y + 4, 9, " field · ", t->inactive_fg, t->main_bg,
+                   0);
+    x += draw_text(s, x, in.y + 4, 6, "Ctrl+O", t->hi_fg, t->main_bg,
+                   ATTR_BOLD);
+    x += draw_text(s, x, in.y + 4, 10, " browse · ", t->inactive_fg,
+                   t->main_bg, 0);
+    x += draw_text(s, x, in.y + 4, 6, "Ctrl+U", t->hi_fg, t->main_bg,
+                   ATTR_BOLD);
+    draw_text(s, x, in.y + 4, 6, " clear", t->inactive_fg, t->main_bg, 0);
     draw_hint(s, in.x + in.w - 24, in.y + 4, t);
+    draw_border_label(s, box.x + 2, box.y + box.h - 1, ".html .ans .txt", NULL,
+                      t);
 }
