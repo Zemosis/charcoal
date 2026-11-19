@@ -15,3 +15,6 @@ charcoal
 
 # Local test media (keep the repo small)
 samples/local/
+
+# The spec stays local
+docs/SPEC.md
