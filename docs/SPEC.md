@@ -161,7 +161,7 @@ for the ramp modes `-i` reproduces ascii_art's output exactly.
 | `half` | 1×2 | `▀` with fg = top pixel, bg = bottom pixel. Highest fidelity; default. |
 | `quad` | 2×2 | Quadrant blocks `▖▗▘▝▚▞▙▛▜▟…`. Of the 8 ways to split the 4 pixels into 2 groups, pick the one with the least squared color error; fg/bg are the group averages. Mono: lit quadrants are the light pixels. |
 | `braille` | 2×4 | Braille `⠀`–`⣿`. Dots are lit where luminance is light, after dithering (use `floyd` for shading). Dot color = average of the lit pixels. btop-like look. |
-| `edges` | 1×1 | Sobel filter (rows scaled by the cell aspect). Strong edges use `/ \ \| -` by gradient angle; the rest falls back to `ascii`. |
+| `edges` | 2×2 | Canny-style: Sobel gradients on the 2×2 samples (rows scaled by the cell aspect), thinned to their peaks across the edge (non-maximum suppression), against a threshold from the picture itself: its strongest 15% of gradients, never below 96. A cell shows its strongest edge as `/ \ \| -` by direction; other cells take the `ascii` glyph of their averaged samples. |
 
 Palettes are listed densest first, as in ascii_art:
 
@@ -319,7 +319,21 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 | `e` | Export the view: a centered dialog with the file name (prefilled `<name>.html`), the folder it saves to, `.html` `.ans` `.txt`, and Enter / Esc. The view is captured when `e` is pressed and playback pauses until the dialog closes |
 | `Ctrl+R` | Reload the config and theme, redraw |
 
-Mouse support (click panel buttons, scroll to zoom) is planned for M6.
+Mouse (SGR reporting with drag events, the `mouse` option, on by default;
+turned off on exit, `Ctrl+Z` and crashes like the rest of the terminal state):
+
+| Where | Wheel | Click / drag |
+|---|---|---|
+| Viewer | Zoom toward the cursor | Drag pans a zoomed image |
+| Controls | Change the row under it | Select a row; its `←` / `→` change it |
+| Timeline | | `▶`/`‖` play/pause, `<` `>` speed, `Repeat`; click or drag the bar to seek |
+| Options | Move the selection | Tabs; options; the value line's arrows |
+| File picker | Scroll | Select; double click opens |
+| Menu | Move | Choose; a click outside closes it |
+| Help | Pages | |
+
+Views record where their clickable parts were drawn each frame, so hit
+tests always match the screen.
 
 ### 6.3.1 Switching files
 
@@ -404,9 +418,12 @@ UI chrome; the art keeps the image's own colors.
 - Animated GIF/APNG/WebP use the delays from the file, adding them up for
   timestamps. Delays under 20 ms are shown as 100 ms, as browsers do.
 - Decoders use FFmpeg's own threads (`thread_count = 0`).
-- The frame-time braille graph in the timeline panel shows render time against
-  the frame budget (green / yellow / red, like btop's CPU graph). Planned for
-  M6.
+- The timeline's second row is a frame-time braille graph, btop style: one
+  bar per video frame (newest at the right), how long it took to render and
+  send against the frame budget (`1000 / (fps × speed)` ms), green under
+  half, yellow under 80%, red above, with the latest time and the budget at
+  the end. Terminal processing is not included; the info panel's `output`
+  row covers that.
 
 Threads are `pthread`s. The UI thread owns all terminal I/O, and the decoder
 thread never writes to the terminal. Checked with ThreadSanitizer (FFmpeg's
@@ -600,7 +617,7 @@ include guards in headers.
 | M3 ✓ | TUI shell: term, screen diffing, boxes, theme, viewer + info + controls panels, help overlay | Can browse settings live on a still image; resize and `Ctrl+Z` are safe |
 | M4 ✓ | Animation and video playback, timeline panel, seeking | 1080p30 target met; GIF/APNG/WebP animate correctly (WebP with libwebp, see 4) |
 | M5 ✓ | Options overlay, config file, themes, histogram panel, export | Settings persist; all 5 built-in themes |
-| M6 | Polish: file switching (`n`/`N`, `O` picker, folders), mouse, frame-time graph, edge mode tuning, README with screenshots | Daily-driver quality |
+| M6 ✓ | Polish: file switching (`n`/`N`, `O` picker, folders), mouse, frame-time graph, edge mode tuning, README with screenshots | Daily-driver quality |
 
 ---
 
@@ -654,3 +671,11 @@ Resolved 2026-11-18:
 20. **Upright photos**: EXIF orientation is applied (section 4).
 21. **Switching files** comes in M6: `n`/`N` for the next/previous file in
     the folder, an `O` file picker, and `charcoal <folder>` opening it.
+22. **Mouse** support with a `mouse` option (on), like btop's "disable
+    mouse": off leaves the mouse to the terminal for selecting text.
+23. **Timeline is 4 rows**: the second holds the frame-time graph.
+24. **Edges are Canny-style** on 2×2 samples (see 5.4): finer and thinner
+    lines, and a threshold that follows the picture.
+25. **README screenshots** are real Ghostty screenshots (gruvbox_dark),
+    cropped to the window, in `docs/screenshots/`. A demo video was left out
+    for now: as an animated image it is 9-24 MB.
