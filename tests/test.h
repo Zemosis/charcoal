@@ -50,5 +50,6 @@ void test_export(void);
 void test_color(void);
 void test_screen(void);
 void test_config(void);
+void test_files(void);
 
 #endif // CHARCOAL_TEST_H
