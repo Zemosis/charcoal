@@ -5,6 +5,9 @@ set -u
 
 cd "$(dirname "$0")/.."
 BIN=./charcoal
+
+# Your own config file must not change the expected output
+export XDG_CONFIG_HOME=/nonexistent-charcoal-test
 DIR=tests/golden
 update=0
 [ "${1:-}" = "--update" ] && update=1

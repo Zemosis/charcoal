@@ -104,7 +104,7 @@ static void test_draw(void) {
     CHECK_INT(text_width("▓a×"), 3);
 
     // ┐label┌ with the hotkey letter lit
-    CHECK_INT(draw_border_label(s, 1, 0, "fit", 'f', t), 5);
+    CHECK_INT(draw_border_label(s, 1, 0, "fit", "f", t), 5);
     CHECK_INT(screen_cell(s, 1, 0)->ch, 0x2510);
     CHECK_INT(screen_cell(s, 2, 0)->fg, t->hi_fg);
     CHECK_INT(screen_cell(s, 3, 0)->fg, t->main_fg);
