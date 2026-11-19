@@ -36,7 +36,8 @@ BUILD_DIR = build
 # Pure code with no terminal or FFmpeg calls, shared by the app and the tests
 CORE_SRCS = $(SRC_DIR)/buf.c $(SRC_DIR)/media/frame.c \
             $(wildcard $(SRC_DIR)/render/*.c) \
-            $(SRC_DIR)/tui/screen.c $(SRC_DIR)/tui/draw.c $(SRC_DIR)/tui/theme.c
+            $(SRC_DIR)/tui/screen.c $(SRC_DIR)/tui/draw.c $(SRC_DIR)/tui/theme.c \
+            $(SRC_DIR)/config.c
 APP_SRCS = $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/app.c \
            $(SRC_DIR)/media/decoder.c $(SRC_DIR)/media/player.c \
            $(SRC_DIR)/tui/term.c \
