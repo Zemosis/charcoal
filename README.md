@@ -4,9 +4,6 @@ A terminal ASCII art viewer for images, animations and video, written in C.
 
 ![charcoal showing a car on Mars as colored ASCII art](docs/screenshots/hero.png)
 
-> Status: M6 (polish) in progress. See [docs/SPEC.md](docs/SPEC.md) for the
-> full specification and milestones.
-
 ## Features
 
 - Opens almost any image, animated image or video through FFmpeg (PNG, JPEG,
@@ -19,6 +16,10 @@ A terminal ASCII art viewer for images, animations and video, written in C.
 - Smooth video playback with a timeline, seeking and speed control
 - Flip through a folder with `n` / `N`, or browse with the file picker
 - Scriptable `render` and `export` (`.txt`, `.ans`, `.html`)
+
+Video plays live, and every setting can change while it plays:
+
+![charcoal playing a video while switching modes and palettes](docs/screenshots/demo.webp)
 
 ## Modes
 
@@ -36,12 +37,16 @@ A terminal ASCII art viewer for images, animations and video, written in C.
     <td><img src="docs/screenshots/mode-edges.png" alt="edges mode"></td>
   </tr>
   <tr>
-    <td align="center"><code>braille</code>: eight dots per cell (inverted)</td>
+    <td align="center"><code>braille</code>: eight dots per cell</td>
     <td align="center"><code>edges</code>: lines along edges over ASCII</td>
   </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/screenshots/mode-ascii.png" alt="ascii mode" width="50%"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><code>ascii</code>: one character per cell, by brightness</td>
+  </tr>
 </table>
-
-`ascii` is the classic mode at the top of this page.
 
 ## Dithering
 
