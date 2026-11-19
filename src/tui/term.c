@@ -247,6 +247,8 @@ static int decode_csi(int *used) {
         return KEY_HOME;
     case 'F':
         return KEY_END;
+    case 'Z':
+        return KEY_BACKTAB;
     case 'n':
         // Reply to ESC [5n: everything sent before it has been processed
         return params[0] == 0 ? KEY_TERM_OK : KEY_NONE;

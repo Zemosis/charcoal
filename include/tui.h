@@ -35,6 +35,7 @@ enum {
     KEY_DELETE,
     KEY_F1,
     KEY_F2,
+    KEY_BACKTAB,        // Shift+Tab
     KEY_TERM_OK         // the terminal answered a status request (ESC [5n)
 };
 
@@ -54,7 +55,7 @@ typedef struct Rect {
 
 // UI colors, 0xRRGGBB; the art keeps the image's own colors
 typedef struct Theme {
-    const char *name;
+    char name[64];
     uint32_t main_bg;
     uint32_t main_fg;
     uint32_t title;
@@ -81,6 +82,21 @@ typedef struct Screen {
 
 // The built-in default theme, gruvbox dark
 const Theme *theme_default(void);
+
+// Built-in themes: gruvbox_dark, nord, tokyo_night, mono, tty
+int theme_builtin_count(void);
+const Theme *theme_builtin(int i);
+
+// Read "key = \"#rrggbb\"" lines over t ("default" and 0-255 also work)
+// Returns -1 with a note in warn when something was not understood
+int theme_parse(const char *text, Theme *t, char *warn, int warn_len);
+
+// A theme by name: ~/.config/charcoal/themes/<name>.theme, else a built-in
+// Unknown names give the default theme and -1
+int theme_load(const char *name, Theme *out, char *warn, int warn_len);
+
+// Built-in names, then user theme files sorted; returns the count
+int theme_list(char names[][64], int max);
 
 // Enter raw mode and the alternate screen, -1 if stdin/stdout is no terminal
 int term_init(void);
@@ -140,9 +156,18 @@ void draw_box(Screen *s, Rect r, const Theme *t, int hotkey,
               const char *title);
 
 // A "┐label┌" button in a box's top or bottom border, returns its width
-// The first occurrence of hotkey in label is drawn in the accent color
+// Characters of label found in hot (NULL for none) are drawn in the accent
+// color, marking the keys that work it
 int draw_border_label(Screen *s, int x, int y, const char *label,
-                      char hotkey, const Theme *t);
+                      const char *hot, const Theme *t);
+
+// Square (0) or rounded (1) box corners
+void draw_set_rounded(int rounded);
+
+// Braille bars rising from the bottom of r, two bars per cell; values are
+// 0-1, one per bar (r.w * 2 of them), colored low/mid/high by height
+void draw_braille_graph(Screen *s, Rect r, const double *values,
+                        const Theme *t);
 
 // Copy rendered art onto the screen; default colors become the theme's
 void draw_grid(Screen *s, const Grid *g, int x, int y, const Theme *t);
