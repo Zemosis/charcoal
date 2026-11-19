@@ -39,6 +39,7 @@ theme — plus many more input formats and rendering modes.
 
 ```
 charcoal <file>                 open the interactive viewer (TUI)
+charcoal <folder>               open its first image or video, picker on top
 charcoal render <file> [opts]   print once to stdout and exit (no TUI)
 charcoal export <file> -o out   write to a file (.txt, .ans, .html)
 charcoal --help | --version
@@ -304,6 +305,8 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 | `Shift`+arrows (`H J K L` with vim keys) | Pan when zoomed |
 | `r` | Reset zoom, pan and adjustments |
 | `Ctrl+Z` | Suspend to the shell; `fg` brings the viewer back |
+| `n` / `N` | Next / previous image or video in the same folder (wraps; files that fail to open are skipped and named) |
+| `O` | File picker |
 | `Space` | Play / pause |
 | `,` / `.` | Step one frame back / forward (paused) |
 | `[` / `]` | Seek −5 s / +5 s |
@@ -317,6 +320,24 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 | `Ctrl+R` | Reload the config and theme, redraw |
 
 Mouse support (click panel buttons, scroll to zoom) is planned for M6.
+
+### 6.3.1 Switching files
+
+- A folder's media files are the ones with image, animation or video
+  extensions (`files.c`), hidden ones skipped, in natural order (`img2`
+  before `img10`, case ignored). The viewer's top border shows the position:
+  `┐name  3/12┐`.
+- Opening another file decodes it into temporaries first; only on success
+  are the old frame and player replaced, so a damaged file leaves the current
+  one on screen with a message. Zoom and pan reset, adjustments carry over.
+- File picker (`O`): a centered `open` box, the folder in the top border,
+  `../` and folders first (bold), then files with sizes; `●` marks the file
+  on screen, which starts selected. Typing filters (case-insensitive
+  "contains"); `Enter` / `→` open, `←` / `Backspace` (with an empty filter)
+  go up and select the folder you came from, `Esc` clears the filter, then
+  closes. Arrows, `PgUp` / `PgDn`, `Home` / `End` move.
+- `charcoal <folder>` opens its first media file with the picker on top;
+  `render` / `export` still take a file.
 
 ### 6.4 Terminal handling
 

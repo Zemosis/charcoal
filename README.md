@@ -2,8 +2,8 @@
 
 A terminal ASCII art viewer for images, animations and video, written in C.
 
-> Status: M5 done (options, config file, themes, histogram, HTML export).
-> Next: polish (M6). See
+> Status: M6 in progress: file switching (`n` / `N`, `O` picker, folders) is
+> done; mouse, frame-time graph and edges tuning are next. See
 > [docs/SPEC.md](docs/SPEC.md) for the full specification and milestones.
 
 ## Planned features
@@ -60,6 +60,7 @@ make uninstall                       # same PREFIX as install
 
 ```bash
 charcoal photo.jpg                       # interactive viewer (? for help)
+charcoal ~/Pictures                      # browse a folder (n / N, O)
 charcoal render photo.jpg -m ascii       # classic ASCII ramp
 charcoal render photo.jpg -m braille -d floyd
 charcoal render photo.jpg -m quad -c 256 --contrast 1.3
