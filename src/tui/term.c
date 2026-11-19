@@ -89,6 +89,8 @@ void term_query_palette(void) {
     for (int i = 0; i < 16; i++) {
         n += snprintf(q + n, sizeof(q) - (size_t)n, "\033]4;%d;?\007", i);
     }
+    // The default text and background colors too (OSC 10 and 11)
+    n += snprintf(q + n, sizeof(q) - (size_t)n, "\033]10;?\007\033]11;?\007");
     if (active && write(STDOUT_FILENO, q, (size_t)n) < 0) {
         // Terminal gone
     }
@@ -137,11 +139,15 @@ static int decode_osc(int *used) {
     memcpy(body, inbuf + 2, (size_t)len);
     body[len] = '\0';
 
-    int index;
+    int index, which;
     char r[5], g[5], b[5];
     if (sscanf(body, "4;%d;rgb:%4[0-9a-fA-F]/%4[0-9a-fA-F]/%4[0-9a-fA-F]",
                &index, r, g, b) != 4) {
-        return KEY_NONE;
+        if (sscanf(body, "%d;rgb:%4[0-9a-fA-F]/%4[0-9a-fA-F]/%4[0-9a-fA-F]",
+                   &which, r, g, b) != 4 || (which != 10 && which != 11)) {
+            return KEY_NONE;
+        }
+        index = which == 10 ? TERM_COLOR_FG : TERM_COLOR_BG;
     }
     last_palette_index = index;
     last_palette_rgb = (uint32_t)(hex_channel(r, (int)strlen(r)) << 16 |

@@ -99,6 +99,8 @@ typedef struct App {
     int frame_drawn;            // the frame on screen reached the terminal
     int limited;                // the max fps limit held the frame back
     int palette_changed;        // the terminal reported its real colors
+    uint32_t term_fg;           // the terminal's own text and background
+    uint32_t term_bg;           // colors, CELL_COLOR_DEFAULT until it says
     int awaiting_ack;           // a frame went out, the terminal has not
     double ack_sent_ms;         // answered yet
     double term_lag_ms;         // how long the terminal takes per frame

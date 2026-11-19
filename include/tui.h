@@ -147,7 +147,10 @@ void term_mouse(MouseEvent *ev);
 // Ask the terminal for its 16 colors (OSC 4); each reply is a KEY_PALETTE
 void term_query_palette(void);
 
-// The color behind the last KEY_PALETTE
+// The color behind the last KEY_PALETTE: 0-15, or the default text or
+// background color
+#define TERM_COLOR_FG 256
+#define TERM_COLOR_BG 257
 void term_palette(int *index, uint32_t *rgb);
 
 // Whether (x, y) falls inside r

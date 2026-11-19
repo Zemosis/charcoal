@@ -724,8 +724,14 @@ static void handle_key(App *a, int key) {
         int index;
         uint32_t rgb;
         term_palette(&index, &rgb);
-        color_set_ansi16(index, rgb);
-        a->palette_changed = 1;
+        if (index == TERM_COLOR_FG) {
+            a->term_fg = rgb;
+        } else if (index == TERM_COLOR_BG) {
+            a->term_bg = rgb;
+        } else {
+            color_set_ansi16(index, rgb);
+            a->palette_changed = 1;
+        }
         return;
     }
     if (key == KEY_TERM_OK) {
@@ -1029,7 +1035,16 @@ static int finish_export(App *a) {
     buf_init(&out);
     size_t n = strlen(path);
     if (n > 5 && strcmp(path + n - 5, ".html") == 0) {
-        export_html(art, &out, a->theme->main_fg, a->theme->main_bg);
+        // The page looks like the screen: the theme's colors, or the
+        // terminal's own where the theme leaves them to the terminal
+        uint32_t fg = a->theme->main_fg, bg = a->theme->main_bg;
+        if (fg == CELL_COLOR_DEFAULT) {
+            fg = a->term_fg;
+        }
+        if (bg == CELL_COLOR_DEFAULT) {
+            bg = a->term_bg;
+        }
+        export_html(art, &out, fg, bg, a->cell_aspect);
     } else if (n > 4 && strcmp(path + n - 4, ".ans") == 0) {
         export_ansi(art, &out);
     } else if (n > 4 && strcmp(path + n - 4, ".txt") == 0) {
@@ -1240,6 +1255,7 @@ int app_run(const char *path, const RenderOpts *opts, FitMode fit, int loop,
         return 1;
     }
     term_set_mouse(a.config.mouse);
+    a.term_fg = a.term_bg = CELL_COLOR_DEFAULT;
     term_query_palette();
     int cols, rows;
     term_size(&cols, &rows, &a.cell_aspect);

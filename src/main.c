@@ -472,7 +472,8 @@ int main(int argc, char **argv) {
             theme_load(a.config.theme, &t, twarn, sizeof(twarn));
             export_html(g, &out, t.main_fg,
                         a.config.theme_background ? t.main_bg
-                                                  : CELL_COLOR_DEFAULT);
+                                                  : CELL_COLOR_DEFAULT,
+                        aspect);
         } else if (has_suffix(a.output, ".ans")) {
             export_ansi(g, &out);
         } else if (has_suffix(a.output, ".txt")) {
