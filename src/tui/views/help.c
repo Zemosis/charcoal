@@ -23,7 +23,8 @@ static const HelpEntry ENTRIES[] = {
     {"q, Ctrl+C", NULL, "Quit."},
     {"?, F1, h", "?, F1", "Show this window."},
     {"Esc", NULL, "Close this window."},
-    {"1, 2, 3, 5", NULL, "Toggle the viewer, info, controls and timeline."},
+    {"o, F2", NULL, "Options (saved to ~/.config/charcoal)."},
+    {"1 - 5", NULL, "Toggle viewer, info, controls, histogram, timeline."},
     {"Up, Down", "Up, Down, j, k", "Select a control."},
     {"Left, Right", "Left, Right, h, l", "Change the selected control."},
     {"m, M", NULL, "Next / previous glyph mode."},
@@ -32,6 +33,11 @@ static const HelpEntry ENTRIES[] = {
     {"d", NULL, "Cycle dithering."},
     {"i", NULL, "Toggle invert (for light terminals)."},
     {"f", NULL, "Cycle fit: contain, cover, stretch."},
+    {"b, B", NULL, "Brightness up / down."},
+    {"t, T", NULL, "Contrast up / down."},
+    {"g, G", NULL, "Gamma up / down."},
+    {"s, S", NULL, "Saturation up / down."},
+    {"e", NULL, "Export the view to .html, .ans or .txt."},
     {"+, -", NULL, "Zoom in / out."},
     {"Shift+arrows", "Shift+arrows, H J K L", "Pan when zoomed in."},
     {"r", NULL, "Reset zoom, pan and adjustments."},
@@ -43,7 +49,7 @@ static const HelpEntry ENTRIES[] = {
     {"< >", NULL, "Slower / faster playback."},
     {"R", NULL, "Toggle repeat (loop)."},
     {"Ctrl+Z", NULL, "Suspend to the shell (fg comes back)."},
-    {"Ctrl+R", NULL, "Redraw the screen."},
+    {"Ctrl+R", NULL, "Reload the config and theme, redraw."},
 };
 #define ENTRY_COUNT ((int)(sizeof(ENTRIES) / sizeof(ENTRIES[0])))
 #define KEY_COL_W 22
@@ -52,8 +58,11 @@ static const HelpEntry ENTRIES[] = {
 static uint32_t blend(uint32_t a, uint32_t b);
 static int rows_per_page(const App *a, Rect *box, int *logo_y);
 
-// Halfway between two colors
+// Halfway between two colors; palette and default colors cannot be mixed
 static uint32_t blend(uint32_t a, uint32_t b) {
+    if ((a | b) & 0xFF000000u) {
+        return b;
+    }
     uint32_t r = (((a >> 16) & 0xFF) + ((b >> 16) & 0xFF)) / 2;
     uint32_t g = (((a >> 8) & 0xFF) + ((b >> 8) & 0xFF)) / 2;
     uint32_t bl = ((a & 0xFF) + (b & 0xFF)) / 2;
@@ -76,6 +85,20 @@ static int rows_per_page(const App *a, Rect *box, int *logo_y) {
     return n < 1 ? 1 : n;
 }
 
+void view_logo(App *a, int y) {
+    const Theme *t = a->theme;
+    Screen *s = a->screen;
+    uint32_t shades[3] = {t->main_fg, blend(t->main_fg, t->inactive_fg),
+                          t->inactive_fg};
+    int lx = (s->cols - LOGO_W) / 2;
+    for (int i = 0; i < 3; i++) {
+        draw_text(s, lx, y + i, LOGO_W, LOGO[i], shades[i], t->main_bg, 0);
+    }
+    const char *ver = "v" CHARCOAL_VERSION;
+    draw_text(s, lx + LOGO_W - text_width(ver), y + 3, 20, ver, t->inactive_fg,
+              t->main_bg, 0);
+}
+
 void view_help(App *a) {
     const Theme *t = a->theme;
     Screen *s = a->screen;
@@ -91,16 +114,7 @@ void view_help(App *a) {
     }
 
     if (logo_y >= 0) {
-        uint32_t shades[3] = {t->main_fg, blend(t->main_fg, t->inactive_fg),
-                              t->inactive_fg};
-        int lx = (s->cols - LOGO_W) / 2;
-        for (int i = 0; i < 3; i++) {
-            draw_text(s, lx, logo_y + i, LOGO_W, LOGO[i], shades[i], t->main_bg,
-                      0);
-        }
-        const char *ver = "v" CHARCOAL_VERSION;
-        draw_text(s, lx + LOGO_W - text_width(ver), logo_y + 3, 20, ver,
-                  t->inactive_fg, t->main_bg, 0);
+        view_logo(a, logo_y);
     }
 
     draw_fill(s, box, t->main_fg, t->main_bg);
@@ -125,7 +139,7 @@ void view_help(App *a) {
         char label[48];
         snprintf(label, sizeof(label), "↑ page %d/%d ↓", a->help_page + 1,
                  pages);
-        draw_border_label(s, box.x + 2, box.y + box.h - 1, label, 0, t);
+        draw_border_label(s, box.x + 2, box.y + box.h - 1, label, NULL, t);
     }
 }
 

@@ -15,12 +15,13 @@ static const char *const PALETTE_NAMES[] = {
 };
 #define PALETTE_COUNT 4
 
-static const char *const FIT_NAMES[FIT_COUNT] = {"contain", "cover", "stretch"};
-
 static const char *const CONTROL_LABELS[CTL_COUNT] = {
     "mode", "palette", "color", "dither", "invert", "fit",
     "brightness", "contrast", "gamma", "saturation",
 };
+
+// Where each label's hotkey letter is: m p c d i f b t g s
+static const int HOTKEY_POS[CTL_COUNT] = {0, 0, 0, 0, 0, 0, 0, 3, 0, 0};
 
 // Prototype
 static int palette_index(const App *a);
@@ -28,10 +29,6 @@ static double step_value(double v, int dir, double step, double lo, double hi);
 static void control_value(const App *a, int control, char *out, size_t n);
 static void info_row(App *a, Rect in, int row, const char *label,
                      const char *value);
-
-const char *fit_name(FitMode f) {
-    return (f >= 0 && f < FIT_COUNT) ? FIT_NAMES[f] : "?";
-}
 
 // Index into PALETTES, or PALETTE_COUNT for a custom ramp
 static int palette_index(const App *a) {
@@ -212,18 +209,14 @@ void view_controls(App *a) {
         }
         draw_fill(a->screen, (Rect){in.x, y, in.w, 1}, fg, bg);
 
-        // The first letter is the hotkey for the rows that have one
+        // Every row has a hotkey; its letter is lit in the label
         const char *label = CONTROL_LABELS[c];
         int x = in.x + 1;
-        if (c <= CTL_FIT) {
-            char first[2] = {label[0], '\0'};
-            draw_text(a->screen, x, y, 1, first, sel ? fg : t->hi_fg, bg,
-                      attr | ATTR_BOLD);
-            draw_text(a->screen, x + 1, y, LABEL_W - 1, label + 1, label_fg, bg,
-                      attr);
-        } else {
-            draw_text(a->screen, x, y, LABEL_W, label, label_fg, bg, attr);
-        }
+        int hk = HOTKEY_POS[c];
+        draw_text(a->screen, x, y, LABEL_W, label, label_fg, bg, attr);
+        char letter[2] = {label[hk], '\0'};
+        draw_text(a->screen, x + hk, y, 1, letter, sel ? fg : t->hi_fg, bg,
+                  attr | ATTR_BOLD);
 
         char value[32];
         control_value(a, c, value, sizeof(value));
@@ -252,7 +245,11 @@ void view_status(App *a) {
     draw_fill(a->screen, r, t->main_fg, t->main_bg);
     int n = draw_text(a->screen, r.x, r.y, r.w, line, t->inactive_fg,
                       t->main_bg, 0);
-    const char *hint = a->message[0] ? a->message : "? help";
+    char prompt[300];
+    snprintf(prompt, sizeof(prompt), "export as: %s\u2588", a->prompt);
+    const char *hint = a->prompting     ? prompt
+                     : a->message[0] ? a->message
+                                     : "? help";
     int hw = text_width(hint);
     if (r.w - n > hw + 1) {
         draw_text(a->screen, r.x + r.w - hw - 1, r.y, hw, hint, t->hi_fg,

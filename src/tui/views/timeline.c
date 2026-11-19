@@ -34,12 +34,12 @@ void view_timeline(App *a) {
 
     // Speed and loop as buttons in the top border, btop style
     char label[32];
-    snprintf(label, sizeof(label), "<%.2f×>", a->speed);
+    snprintf(label, sizeof(label), "<speed %.2f×>", a->speed);
     int lw = text_width(label) + 2;
     const char *loop = a->loop ? "Repeat on" : "Repeat off";
     int rw = text_width(loop) + 2;
-    draw_border_label(s, r.x + r.w - 2 - rw, r.y, loop, 'R', t);
-    draw_border_label(s, r.x + r.w - 3 - rw - lw, r.y, label, 0, t);
+    draw_border_label(s, r.x + r.w - 2 - rw, r.y, loop, "R", t);
+    draw_border_label(s, r.x + r.w - 3 - rw - lw, r.y, label, "<>", t);
 
     // ▶ 0:12.3 ━━━━━━━━━●─────────── 1:47.0
     Rect in = rect_inner(r);

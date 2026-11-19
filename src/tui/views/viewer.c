@@ -130,6 +130,17 @@ void viewer_update(App *a) {
     memcpy(a->work, a->pixels, bytes);
     a->opts.cell_aspect = A;
     adjust_rgb(a->work, out_w * out_h, &a->opts);
+
+    // Brightness spread of exactly what is shown, for the histogram panel
+    int counts[256] = {0};
+    int npx = out_w * out_h;
+    for (int i = 0; i < npx; i++) {
+        const uint8_t *p = a->work + (size_t)i * 3;
+        counts[rgb_luma(p[0], p[1], p[2])]++;
+    }
+    for (int i = 0; i < 256; i++) {
+        a->histogram[i] = (double)counts[i] / npx;
+    }
     if (glyph_render(a->work, &a->opts, a->art) != 0) {
         snprintf(a->message, sizeof(a->message), "out of memory");
     }
@@ -175,9 +186,13 @@ void view_viewer(App *a) {
             snprintf(shown, sizeof(shown), "%s", a->name);
         }
         draw_border_label(a->screen, r.x + r.w - 2 - text_width(shown) - 2, r.y,
-                          shown, 0, t);
+                          shown, NULL, t);
     }
-    if (a->message[0]) {
-        draw_border_label(a->screen, r.x + 2, r.y + r.h - 1, a->message, 0, t);
+    if (a->prompting) {
+        char label[300];
+        snprintf(label, sizeof(label), "export as: %s\u2588", a->prompt);
+        draw_border_label(a->screen, r.x + 2, r.y + r.h - 1, label, NULL, t);
+    } else if (a->message[0]) {
+        draw_border_label(a->screen, r.x + 2, r.y + r.h - 1, a->message, NULL, t);
     }
 }
