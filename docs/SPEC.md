@@ -318,7 +318,7 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 | `Home` | Back to the start |
 | `b` / `B`, `t` / `T`, `g` / `G`, `s` / `S` | Brightness, contrast, gamma, saturation up / down |
 | `4` | Toggle the histogram panel |
-| `e` | Export the view: a centered dialog with the file name (prefilled `<name>.html`), the folder it saves to, `.html` `.ans` `.txt`, and Enter / Esc. The view is captured when `e` is pressed and playback pauses until the dialog closes |
+| `e` | Export the view: a centered dialog with a Folder and a File field (prefilled `<name>.html`); Tab switches field, `Ctrl+O` or `[browse]` picks the folder in the file picker (folders only, with a "save in this folder" row), `Ctrl+U` clears and `Ctrl+W` deletes back a folder; `~` works, and a name with its own path (`/x`, `~/x`) ignores the folder. The folder starts where the last export went (`export_dir`), else where charcoal was started. A missing folder or a name without `.html` `.ans` `.txt` keeps the dialog open with the reason. The view is captured when `e` is pressed and playback pauses until the dialog closes |
 | `Ctrl+R` | Reload the config and theme, redraw |
 
 Mouse (SGR reporting with drag events, the `mouse` option, on by default;
@@ -469,6 +469,7 @@ saturation       = 1
 loop             = true
 max_fps          = 0               # 0 = every frame
 panels           = "viewer info controls histogram timeline"
+export_dir       = ""              # where e saved last; "" = where charcoal starts
 ```
 
 The options overlay writes this file (through a temporary file and a
@@ -703,3 +704,6 @@ Resolved 2026-11-18:
 29. **Big stills get a working copy** for fast setting changes (see 12).
 30. **Wide characters** take two cells (see 6.4).
 31. **A man page and bash / zsh / fish completions** are installed.
+32. **The export folder is chosen, not typed**: the dialog has a Folder
+    field with a browse button that reuses the file picker, and remembers
+    the last folder (`export_dir`).

@@ -193,7 +193,8 @@ and lists are clickable.
 ## Configuration
 
 Press `o` in the viewer for the options; they are saved to
-`~/.config/charcoal/charcoal.conf`, as are the panels shown with `1`–`5`.
+`~/.config/charcoal/charcoal.conf`, as are the panels shown with `1`–`5`
+and the folder you last exported to (`e`, then `Ctrl+O` to browse).
 Themes: `gruvbox_dark` (default), `nord`,
 `tokyo_night`, `mono`, `tty`, or your own
 `~/.config/charcoal/themes/<name>.theme` with lines like
