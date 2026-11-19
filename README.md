@@ -1,7 +1,6 @@
 # charcoal
 
-A terminal ASCII art viewer for images, animations and video, written in C,
-with a btop-inspired interface.
+A terminal ASCII art viewer for images, animations and video, written in C.
 
 > Status: M5 done (options, config file, themes, histogram, HTML export).
 > Next: polish (M6). See

@@ -106,6 +106,13 @@ to be built with `libwebp-devel`. `charcoal --version` lists the libraries.
 FFmpeg's own log output is turned off (`AV_LOG_QUIET`): it would draw over the
 viewer, and charcoal reports errors itself.
 
+Orientation: photos and videos are shown upright. FFmpeg reports a JPEG's
+EXIF orientation as a display matrix on the decoded frame (so it is known
+after the first frame), and a phone video's in the stream info. The matrix
+is read like ffmpeg's autorotate into the 8 EXIF orientations (turns and
+mirrors); frames are scaled in their stored shape, then turned, and the
+reported size is the displayed one. Checked against PIL's `exif_transpose`.
+
 Errors such as an unsupported codec, a corrupt file or a missing file show a
 clear message (in the TUI as a red box, otherwise on stderr) with exit code 1.
 
@@ -282,7 +289,7 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 |---|---|
 | `q`, `Ctrl+C` | Quit (`q` closes an open overlay first) |
 | `?`, `F1` (and `h` with vim keys off) | Help overlay |
-| `Esc` | Close the overlay |
+| `Esc` | Menu (Options, Help, Quit); closes whatever is open first: the export dialog, then an overlay, and only then opens the menu |
 | `o`, `F2` | Options overlay (M5) |
 | `1`–`5` | Toggle panel |
 | `↑` / `↓` (`k` / `j` with vim keys) | Select a control |
@@ -306,7 +313,7 @@ pressing a hotkey also moves the cursor to that row. Numbers step by 0.05
 | `Home` | Back to the start |
 | `b` / `B`, `t` / `T`, `g` / `G`, `s` / `S` | Brightness, contrast, gamma, saturation up / down |
 | `4` | Toggle the histogram panel |
-| `e` | Export the view: a prompt in the viewer's bottom border, prefilled with `<name>.html`; `.html`, `.ans` or `.txt` |
+| `e` | Export the view: a centered dialog with the file name (prefilled `<name>.html`), the folder it saves to, `.html` `.ans` `.txt`, and Enter / Esc. The view is captured when `e` is pressed and playback pauses until the dialog closes |
 | `Ctrl+R` | Reload the config and theme, redraw |
 
 Mouse support (click panel buttons, scroll to zoom) is planned for M6.
@@ -572,7 +579,7 @@ include guards in headers.
 | M3 ✓ | TUI shell: term, screen diffing, boxes, theme, viewer + info + controls panels, help overlay | Can browse settings live on a still image; resize and `Ctrl+Z` are safe |
 | M4 ✓ | Animation and video playback, timeline panel, seeking | 1080p30 target met; GIF/APNG/WebP animate correctly (WebP with libwebp, see 4) |
 | M5 ✓ | Options overlay, config file, themes, histogram panel, export | Settings persist; all 5 built-in themes |
-| M6 | Polish: mouse, frame-time graph, edge mode tuning, README with screenshots | Daily-driver quality |
+| M6 | Polish: file switching (`n`/`N`, `O` picker, folders), mouse, frame-time graph, edge mode tuning, README with screenshots | Daily-driver quality |
 
 ---
 
@@ -580,9 +587,8 @@ include guards in headers.
 
 Resolved 2026-11-18:
 
-1. **Directory browser**: yes, but after M6. `charcoal <directory>` will open
-   a file browser panel to flip through images with `n`/`p`. Until then,
-   passing a directory is an error.
+1. **Directory browser**: first planned for after M6, then moved into M6
+   (decision 21). Until then, passing a directory is an error.
 2. **Zoom**: zooming goes past 1:1. Beyond one source pixel per sub-pixel, the
    image is upscaled with nearest-neighbor so pixel art stays crisp.
 3. **Default mode**: `half`, since it is the closest to the real image.
@@ -620,3 +626,10 @@ Resolved 2026-11-18:
 17. **The histogram** shows the luminance of exactly what is on screen
     (after adjustments), as braille bars with a square-root scale so small
     counts stay visible; it sits below the controls when there is room.
+18. **Esc menu**, like btop's main menu: Options, Help, Quit. Esc closes
+    the innermost open thing first, so it never skips a level.
+19. **Export is a dialog**, not a line in the border: the prompt was easy to
+    miss, and keys typed into it by accident ended up in the file name.
+20. **Upright photos**: EXIF orientation is applied (section 4).
+21. **Switching files** comes in M6: `n`/`N` for the next/previous file in
+    the folder, an `O` file picker, and `charcoal <folder>` opening it.
