@@ -184,40 +184,53 @@ static void test_edges(void) {
     o.mode = MODE_EDGES;
     o.color = COLOR_MONO;
 
-    // Left half dark, right half light: a vertical edge
-    uint8_t px[6 * 4 * 3];
-    for (int y = 0; y < 4; y++) {
-        for (int x = 0; x < 6; x++) {
-            uint8_t v = x < 3 ? 0 : 255;
-            fill_rgb(px + (y * 6 + x) * 3, 1, v, v, v);
+    // 6 x 4 cells of 2 x 2 samples each; left half dark, right half light
+    enum { SW = 12, SH = 8 };
+    uint8_t px[SW * SH * 3];
+    for (int y = 0; y < SH; y++) {
+        for (int x = 0; x < SW; x++) {
+            uint8_t v = x < SW / 2 ? 0 : 255;
+            fill_rgb(px + (y * SW + x) * 3, 1, v, v, v);
         }
     }
     Grid *g = render_px(px, 6, 4, &o);
-    CHECK_INT(g->cells[1 * 6 + 2].ch, '|');
+    // The edge sits between cells 2 and 3
+    CHECK(g->cells[1 * 6 + 2].ch == '|' || g->cells[1 * 6 + 3].ch == '|');
     CHECK_INT(g->cells[1 * 6 + 0].ch, ' ');     // dark, flat
     CHECK_INT(g->cells[1 * 6 + 5].ch, '@');     // light, flat
     grid_free(g);
 
-    // Top dark, bottom light: a horizontal edge
-    for (int y = 0; y < 4; y++) {
-        for (int x = 0; x < 6; x++) {
-            uint8_t v = y < 2 ? 0 : 255;
-            fill_rgb(px + (y * 6 + x) * 3, 1, v, v, v);
+    // Top dark, bottom light: a horizontal edge between rows 1 and 2
+    for (int y = 0; y < SH; y++) {
+        for (int x = 0; x < SW; x++) {
+            uint8_t v = y < SH / 2 ? 0 : 255;
+            fill_rgb(px + (y * SW + x) * 3, 1, v, v, v);
         }
     }
     g = render_px(px, 6, 4, &o);
-    CHECK_INT(g->cells[1 * 6 + 3].ch, '-');
+    CHECK(g->cells[1 * 6 + 3].ch == '-' || g->cells[2 * 6 + 3].ch == '-');
     grid_free(g);
 
-    // A diagonal: light below the line y = x
-    for (int y = 0; y < 4; y++) {
-        for (int x = 0; x < 6; x++) {
+    // Light below a line falling to the right: a \ edge near the middle
+    for (int y = 0; y < SH; y++) {
+        for (int x = 0; x < SW; x++) {
             uint8_t v = y * 2 > x ? 255 : 0;
-            fill_rgb(px + (y * 6 + x) * 3, 1, v, v, v);
+            fill_rgb(px + (y * SW + x) * 3, 1, v, v, v);
         }
     }
     g = render_px(px, 6, 4, &o);
-    CHECK_INT(g->cells[2 * 6 + 3].ch, '\\');
+    CHECK(g->cells[1 * 6 + 3].ch == '\\' || g->cells[2 * 6 + 3].ch == '\\');
+    grid_free(g);
+
+    // A flat picture has no edges at all
+    fill_rgb(px, SW * SH, 128, 128, 128);
+    g = render_px(px, 6, 4, &o);
+    int edges = 0;
+    for (int i = 0; i < 24; i++) {
+        uint32_t c = g->cells[i].ch;
+        edges += c == '|' || c == '/' || c == '-' || c == '\\';
+    }
+    CHECK_INT(edges, 0);
     grid_free(g);
 }
 
