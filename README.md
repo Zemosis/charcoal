@@ -225,3 +225,7 @@ make golden     # render samples/ and compare with tests/golden/
 ```
 
 On Fedora, `sudo dnf install libasan libubsan` for the sanitizers.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
