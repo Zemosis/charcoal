@@ -1,6 +1,10 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -pedantic -D_POSIX_C_SOURCE=200809L \
-         -Iinclude -MMD -MP
+# Flags charcoal always builds with; CFLAGS, CPPFLAGS and LDFLAGS from the
+# environment or the command line are added after (packagers pass theirs)
+BASE_CFLAGS = -Wall -Wextra -std=c11 -pedantic -D_POSIX_C_SOURCE=200809L \
+              -Iinclude -MMD -MP
+CFLAGS ?=
+LDFLAGS ?=
 LDLIBS = -lm -lpthread
 RELEASE_FLAGS = -O2
 TARGET = charcoal
@@ -19,6 +23,9 @@ SAN_FLAGS := $(shell echo 'int main(void){return 0;}' | \
     $(CC) -x c -fsanitize=address,undefined -o /dev/null - 2>/dev/null && \
     echo -fsanitize=address,undefined)
 DEBUG_FLAGS = -g -O0 $(SAN_FLAGS)
+
+# Debug or release flags, set by the target, then the user's
+ALL_CFLAGS = $(BASE_CFLAGS) $(MODE_FLAGS) $(CFLAGS)
 TEST_TARGET = build/test_runner
 
 # FFmpeg, found through pkg-config (only the app needs it, not the tests)
@@ -60,13 +67,13 @@ FLAGS_FILE = $(BUILD_DIR)/flags
 # Default target: debug build
 all: debug
 
-debug: CFLAGS += $(DEBUG_FLAGS)
+debug: MODE_FLAGS = $(DEBUG_FLAGS)
 debug: $(TARGET)
 
-release: CFLAGS += $(RELEASE_FLAGS)
+release: MODE_FLAGS = $(RELEASE_FLAGS)
 release: $(TARGET)
 
-test: CFLAGS += $(DEBUG_FLAGS)
+test: MODE_FLAGS = $(DEBUG_FLAGS)
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
@@ -75,11 +82,12 @@ golden: debug
 	tests/golden.sh
 
 $(TARGET): $(APP_OBJS) | check-ffmpeg
-	$(CC) $(CFLAGS) -o $@ $(APP_OBJS) $(FFMPEG_LIBS) $(WEBP_LIBS) $(LDLIBS)
+	$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o $@ $(APP_OBJS) $(FFMPEG_LIBS) $(WEBP_LIBS) \
+	    $(LDLIBS)
 	@[ "$(HAVE_WEBP)" = 1 ] || echo "note: libwebp-devel not found, animated WebP will not play"
 
 $(TEST_TARGET): $(CORE_OBJS) $(TEST_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 # Only the decoder and player include FFmpeg headers
 $(BUILD_DIR)/$(SRC_DIR)/media/decoder.o \
@@ -88,16 +96,16 @@ $(BUILD_DIR)/$(SRC_DIR)/media/decoder.o: EXTRA_CFLAGS += $(WEBP_CFLAGS)
 
 $(BUILD_DIR)/%.o: %.c $(FLAGS_FILE)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
+	$(CC) $(ALL_CFLAGS) $(CPPFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
 
 # Only touched when the flags change, so objects rebuild only then
 $(FLAGS_FILE): FORCE
 	@mkdir -p $(BUILD_DIR)
-	@echo '$(CFLAGS) $(WEBP_CFLAGS)' | cmp -s - $@ || \
-	    echo '$(CFLAGS) $(WEBP_CFLAGS)' > $@
+	@echo '$(ALL_CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(WEBP_CFLAGS)' | cmp -s - $@ || \
+	    echo '$(ALL_CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(WEBP_CFLAGS)' > $@
 
 # Installs the release build (make release && sudo make install)
-install: CFLAGS += $(RELEASE_FLAGS)
+install: MODE_FLAGS = $(RELEASE_FLAGS)
 install: $(TARGET)
 	install -Dm755 $(TARGET) $(BINDIR)/$(TARGET)
 	install -Dm644 docs/charcoal.1 $(MANDIR)/charcoal.1
