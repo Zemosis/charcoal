@@ -220,7 +220,7 @@ void player_close(Player *p) {
         pthread_join(p->thread, NULL);
     }
     queue_clear(p);
-    sws_free_context(&p->sws);
+    SWS_FREE(p->sws);
     av_frame_free(&p->av);
     av_frame_free(&p->last);
     if (p->d.ctx) {

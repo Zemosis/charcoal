@@ -9,6 +9,32 @@
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 
+// FFmpeg 4.4 to 8 are supported; newer APIs fall back on older systems
+
+// AVFrame.duration is FFmpeg 6.0; before, pkt_duration
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 30, 100)
+#define FRAME_DURATION(f) ((f)->duration)
+#else
+#define FRAME_DURATION(f) ((f)->pkt_duration)
+#endif
+
+// Stream side data moved into AVCodecParameters in FFmpeg 6.1
+#define HAVE_CODED_SIDE_DATA \
+    (LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 29, 100))
+
+// FFmpeg 8 scales frames with a context that configures itself; before,
+// the context is set up for each source size and format
+#ifndef HAVE_SWS_AUTO
+#define HAVE_SWS_AUTO (LIBSWSCALE_VERSION_MAJOR >= 9)
+#endif
+
+// Free a scaling context and clear the pointer
+#define SWS_FREE(ctx) \
+    do { \
+        sws_freeContext(ctx); \
+        (ctx) = NULL; \
+    } while (0)
+
 // WebP files read with libwebp (defined in decoder.c when built with it)
 struct WebpFile;
 

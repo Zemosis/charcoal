@@ -94,8 +94,18 @@ static int orient_from_matrix(const int32_t *m) {
 int frame_orient_of(const AVFrame *av, int hint) {
     const AVFrameSideData *sd =
         av_frame_get_side_data(av, AV_FRAME_DATA_DISPLAYMATRIX);
-    if (sd && sd->size >= 9 * sizeof(int32_t)) {
+    // size is an int before FFmpeg 5
+    if (sd && (size_t)sd->size >= 9 * sizeof(int32_t)) {
         return orient_from_matrix((const int32_t *)sd->data);
+    }
+    // Before FFmpeg 6, JPEG decoders give the EXIF tag as frame metadata
+    const AVDictionaryEntry *tag = av_dict_get(av->metadata, "Orientation",
+                                               NULL, 0);
+    if (tag) {
+        int o = atoi(tag->value);
+        if (o >= 1 && o <= 8) {
+            return o;
+        }
     }
     return hint >= 1 && hint <= 8 ? hint : 1;
 }
@@ -244,7 +254,7 @@ void decoder_timing(MediaFile *m, Decoder *d, const AVFrame *av,
 #ifdef HAVE_WEBP
     if (m->webp) {
         // webp_next leaves the delay in milliseconds
-        *dur_us = webp_delay_us((int)av->duration);
+        *dur_us = webp_delay_us((int)FRAME_DURATION(av));
         *pts_us = d->next_pts_us;
         d->next_pts_us += *dur_us;
         return;
@@ -252,7 +262,8 @@ void decoder_timing(MediaFile *m, Decoder *d, const AVFrame *av,
 #endif
     AVStream *st = m->fmt->streams[m->stream];
     AVRational us = {1, 1000000};
-    int64_t dur = av->duration > 0 ? av_rescale_q(av->duration, st->time_base, us)
+    int64_t dur = FRAME_DURATION(av) > 0
+                      ? av_rescale_q(FRAME_DURATION(av), st->time_base, us)
                                    : 0;
 
     if (is_animated_codec(m->codec->id)) {
@@ -294,6 +305,7 @@ Frame *frame_convert(const AVFrame *av, int w, int h, int orient_hint,
     // pixels of a row when writing into an exact-width buffer
     Frame *f = frame_new(w, h);
     AVFrame *conv = av_frame_alloc();
+#if HAVE_SWS_AUTO
     if (!*sws) {
         *sws = sws_alloc_context();
         if (*sws) {
@@ -301,6 +313,9 @@ Frame *frame_convert(const AVFrame *av, int w, int h, int orient_hint,
         }
     }
     if (!f || !conv || !*sws) {
+#else
+    if (!f || !conv) {
+#endif
         snprintf(err, (size_t)err_len, "out of memory");
         goto fail;
     }
@@ -310,7 +325,19 @@ Frame *frame_convert(const AVFrame *av, int w, int h, int orient_hint,
 
     // Color range and matrix come from the frame's own metadata, and the
     // context sets itself up again whenever sizes or formats change
+#if HAVE_SWS_AUTO
     int ret = sws_scale_frame(*sws, conv, av);
+#else
+    // A context for this source; the output is FFmpeg-allocated so its rows
+    // are padded, as sws needs
+    int ret = AVERROR(ENOMEM);
+    *sws = sws_getCachedContext(*sws, av->width, av->height, av->format, w, h,
+                                conv->format, SWS_AREA, NULL, NULL, NULL);
+    if (*sws && (ret = av_frame_get_buffer(conv, 0)) >= 0) {
+        ret = sws_scale(*sws, (const uint8_t *const *)av->data, av->linesize, 0,
+                        av->height, conv->data, conv->linesize);
+    }
+#endif
     if (ret < 0) {
         char msg[AV_ERROR_MAX_STRING_SIZE];
         av_strerror(ret, msg, sizeof(msg));
@@ -478,7 +505,7 @@ static int webp_next(MediaFile *m, AVFrame *out) {
         memcpy(out->data[0] + (size_t)y * out->linesize[0],
                buf + (size_t)y * m->width * 4, (size_t)m->width * 4);
     }
-    out->duration = ts - w->prev_ms;
+    FRAME_DURATION(out) = ts - w->prev_ms;
     w->prev_ms = ts;
     return 0;
 }
@@ -513,8 +540,15 @@ MediaFile *media_open(const char *path, char *err, int err_len) {
         set_av_error(err, err_len, path, ret);
         goto fail;
     }
-    m->stream = av_find_best_stream(m->fmt, AVMEDIA_TYPE_VIDEO, -1, -1,
-                                    &m->codec, 0);
+    // The codec comes back const from FFmpeg 5 on
+#if LIBAVFORMAT_VERSION_MAJOR >= 59
+    const AVCodec *codec = NULL;
+#else
+    AVCodec *codec = NULL;
+#endif
+    m->stream = av_find_best_stream(m->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, &codec,
+                                    0);
+    m->codec = codec;
     if (m->stream < 0 || !m->codec) {
         snprintf(err, (size_t)err_len, "%s: no image or video stream", path);
         goto fail;
@@ -527,11 +561,23 @@ MediaFile *media_open(const char *path, char *err, int err_len) {
 
     // Phone videos say how to turn them in the stream; JPEG photos only
     // tell on their first frame (see media_decode_at)
+#if HAVE_CODED_SIDE_DATA
     const AVPacketSideData *sd =
         av_packet_side_data_get(par->coded_side_data, par->nb_coded_side_data,
                                 AV_PKT_DATA_DISPLAYMATRIX);
-    set_orient(m, sd && sd->size >= 9 * sizeof(int32_t)
-                      ? orient_from_matrix((const int32_t *)sd->data)
+    const uint8_t *matrix = sd ? sd->data : NULL;
+    size_t matrix_size = sd ? sd->size : 0;
+#elif LIBAVFORMAT_VERSION_MAJOR >= 59
+    size_t matrix_size = 0;
+    const uint8_t *matrix = av_stream_get_side_data(
+        m->fmt->streams[m->stream], AV_PKT_DATA_DISPLAYMATRIX, &matrix_size);
+#else
+    int matrix_size = 0;
+    const uint8_t *matrix = av_stream_get_side_data(
+        m->fmt->streams[m->stream], AV_PKT_DATA_DISPLAYMATRIX, &matrix_size);
+#endif
+    set_orient(m, matrix && (size_t)matrix_size >= 9 * sizeof(int32_t)
+                      ? orient_from_matrix((const int32_t *)matrix)
                       : 1);
     if (m->width < 1 || m->height < 1) {
         // FFmpeg reads no size when its decoder cannot handle the file,
@@ -643,7 +689,7 @@ Frame *media_decode_at(MediaFile *m, int64_t t_us, int64_t index, int need_w,
     }
 
 done:
-    sws_free_context(&sws);
+    SWS_FREE(sws);
     av_frame_free(&av);
     av_frame_free(&last);
     decoder_close(&d);
