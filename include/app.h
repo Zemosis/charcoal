@@ -9,7 +9,7 @@
 
 #include <stddef.h>
 
-#define CHARCOAL_VERSION "0.1.0"
+#define CHARCOAL_VERSION "0.1.1"
 
 // Panels, numbered by their hotkeys 1-5
 typedef enum Panel {
