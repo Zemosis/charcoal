@@ -23,24 +23,37 @@ Video plays live, and every setting can change while it plays:
 
 ## Install
 
-One line, on Linux (Fedora, Debian, Ubuntu, Arch, openSUSE, Alpine; macOS
-with Homebrew should work but is not tested yet):
+### Fedora
+
+```bash
+sudo dnf copr enable turuu/charcoal
+sudo dnf install charcoal
+```
+
+Updates come with `dnf upgrade`. Fedora 43 and newer, x86_64 and aarch64
+([COPR page](https://copr.fedorainfracloud.org/coprs/turuu/charcoal/)).
+
+### Any Linux, in one line
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Zemosis/charcoal/main/install.sh | sh
 ```
 
-It installs the build dependencies it is missing (a C compiler and FFmpeg's
-libraries, asking for `sudo`), builds charcoal and puts it in `~/.local/bin`
-with its man page and tab completion for bash, zsh and fish. Then:
+Works on Debian, Ubuntu, Arch, openSUSE, Alpine and Fedora (macOS with
+Homebrew should work but is not tested yet). It installs the build
+dependencies it is missing (a C compiler and FFmpeg's libraries, asking for
+`sudo`), builds charcoal and puts it in `~/.local/bin` with its man page and
+tab completion for bash, zsh and fish.
+
+Options go after `sh -s --`, for example `... | sh -s -- --system` for
+`/usr/local`, `--ref v0.1.1` for a release, or `--uninstall`. From a clone,
+`./install.sh` builds that clone.
+
+Then:
 
 ```bash
 charcoal ~/Pictures
 ```
-
-Options go after `sh -s --`, for example `... | sh -s -- --system` for
-`/usr/local`, `--ref v0.1.0` for a release, or `--uninstall`. From a clone,
-`./install.sh` builds that clone.
 
 ### By hand
 
