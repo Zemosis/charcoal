@@ -21,6 +21,83 @@ Video plays live, and every setting can change while it plays:
 
 ![charcoal playing a video while switching modes and palettes](docs/screenshots/demo.webp)
 
+## Install
+
+One line, on Linux (Fedora, Debian, Ubuntu, Arch, openSUSE, Alpine; macOS
+with Homebrew should work but is not tested yet):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zemosis/charcoal/main/install.sh | sh
+```
+
+It installs the build dependencies it is missing (a C compiler and FFmpeg's
+libraries, asking for `sudo`), builds charcoal and puts it in `~/.local/bin`
+with its man page and tab completion for bash, zsh and fish. Then:
+
+```bash
+charcoal ~/Pictures
+```
+
+Options go after `sh -s --`, for example `... | sh -s -- --system` for
+`/usr/local`, `--ref v0.1.0` for a release, or `--uninstall`. From a clone,
+`./install.sh` builds that clone.
+
+### By hand
+
+```bash
+# Fedora
+sudo dnf install gcc make ffmpeg-free-devel libwebp-devel
+# Debian / Ubuntu
+sudo apt install build-essential pkg-config libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libwebp-dev
+# Arch
+sudo pacman -S --needed base-devel ffmpeg libwebp
+# macOS
+brew install pkg-config ffmpeg webp
+
+git clone https://github.com/Zemosis/charcoal && cd charcoal
+make install PREFIX=~/.local     # or: make release && sudo make install
+```
+
+FFmpeg 4.4 or newer works; libwebp is optional (it adds animated WebP). `make uninstall` with the same
+`PREFIX` removes everything. For zsh completion with `PREFIX=~/.local`, add
+`fpath=(~/.local/share/zsh/site-functions $fpath)` before `compinit`.
+
+## Usage
+
+```bash
+charcoal                                 # pick a file in this folder
+charcoal photo.jpg                       # interactive viewer (? for help)
+charcoal ~/Pictures                      # browse a folder (n / N, O)
+charcoal clip.mp4                        # plays, with a timeline
+charcoal render photo.jpg -m ascii       # print once, for scripts and pipes
+charcoal render photo.jpg -m braille -d floyd
+charcoal render photo.jpg -m quad -c 256 --contrast 1.3
+charcoal render photo.jpg -m ascii -p detailed -c mono -w 80 -i   # light terminal
+charcoal render clip.mp4 -t 12.5         # the frame at 12.5 s
+charcoal render anim.gif --frame 3       # the 4th frame
+charcoal export photo.jpg -o photo.html  # .txt, .ans or .html
+charcoal photo.jpg --theme nord
+```
+
+When stdout is not a terminal, `charcoal <file>` prints once like `render`.
+
+### Keys
+
+| Keys | |
+|---|---|
+| `↑` `↓` / `j` `k`, `←` `→` / `h` `l` | Pick a control, change it |
+| `m` `p` `c` `d` `i` `f` | Mode, palette, color, dither, invert, fit |
+| `b` `t` `g` `s` (capitals lower) | Brightness, contrast, gamma, saturation |
+| `+` `-`, `Shift`+arrows / `H` `J` `K` `L` | Zoom, pan |
+| `n` `N`, `O` | Next / previous file, file picker |
+| `Space`, `,` `.`, `[` `]`, `{` `}` | Play, step a frame, seek 5 s, seek 30 s |
+| `<` `>`, `R`, `Home` | Speed, repeat, back to the start |
+| `e`, `o`, `?`, `Esc`, `q` | Export, options, help, menu, quit |
+
+The mouse works too: the wheel zooms toward the cursor or changes the
+control under it, dragging pans or scrubs the timeline, and buttons, tabs
+and lists are clickable.
+
 ## Modes
 
 <table>
@@ -126,75 +203,6 @@ Video plays live, and every setting can change while it plays:
   </tr>
 </table>
 
-## Building
-
-Requires a C11 compiler and the FFmpeg development libraries
-(`libavformat`, `libavcodec`, `libavutil`, `libswscale`). libwebp is optional
-and adds animated WebP. Debug builds use ASan and UBSan when their runtimes
-are installed.
-
-```bash
-# Fedora
-sudo dnf install ffmpeg-free-devel libwebp-devel libasan libubsan
-# Debian/Ubuntu
-sudo apt install libavformat-dev libavcodec-dev libswscale-dev libwebp-dev
-```
-
-```bash
-make            # debug build (ASan + UBSan)
-make release    # optimized build
-make test       # unit tests (no FFmpeg needed)
-make golden     # render samples/ and compare with tests/golden/
-```
-
-## Installing
-
-```bash
-make release && sudo make install    # /usr/local/bin/charcoal
-make install PREFIX=~/.local         # ~/.local/bin/charcoal, no sudo
-make uninstall                       # same PREFIX as install
-```
-
-This also installs the man page (`man charcoal`) and tab completion for bash,
-zsh and fish. For zsh with `PREFIX=~/.local`, add
-`fpath=(~/.local/share/zsh/site-functions $fpath)` before `compinit`.
-
-## Usage
-
-```bash
-charcoal                                 # pick a file in this folder
-charcoal photo.jpg                       # interactive viewer (? for help)
-charcoal ~/Pictures                      # browse a folder (n / N, O)
-charcoal clip.mp4                        # plays, with a timeline
-charcoal render photo.jpg -m ascii       # print once, for scripts and pipes
-charcoal render photo.jpg -m braille -d floyd
-charcoal render photo.jpg -m quad -c 256 --contrast 1.3
-charcoal render photo.jpg -m ascii -p detailed -c mono -w 80 -i   # light terminal
-charcoal render clip.mp4 -t 12.5         # the frame at 12.5 s
-charcoal render anim.gif --frame 3       # the 4th frame
-charcoal export photo.jpg -o photo.html  # .txt, .ans or .html
-charcoal photo.jpg --theme nord
-```
-
-When stdout is not a terminal, `charcoal <file>` prints once like `render`.
-
-### Keys
-
-| Keys | |
-|---|---|
-| `↑` `↓` / `j` `k`, `←` `→` / `h` `l` | Pick a control, change it |
-| `m` `p` `c` `d` `i` `f` | Mode, palette, color, dither, invert, fit |
-| `b` `t` `g` `s` (capitals lower) | Brightness, contrast, gamma, saturation |
-| `+` `-`, `Shift`+arrows / `H` `J` `K` `L` | Zoom, pan |
-| `n` `N`, `O` | Next / previous file, file picker |
-| `Space`, `,` `.`, `[` `]`, `{` `}` | Play, step a frame, seek 5 s, seek 30 s |
-| `<` `>`, `R`, `Home` | Speed, repeat, back to the start |
-| `e`, `o`, `?`, `Esc`, `q` | Export, options, help, menu, quit |
-
-The mouse works too: the wheel zooms toward the cursor or changes the
-control under it, dragging pans or scrubs the timeline, and buttons, tabs
-and lists are clickable.
-
 ## Configuration
 
 Press `o` in the viewer for the options; they are saved to
@@ -206,3 +214,14 @@ Themes: `gruvbox_dark` (default), `nord`,
 `main_bg = "#282828"` (keys: `main_bg`, `main_fg`, `title`, `hi_fg`,
 `selected_bg`, `selected_fg`, `inactive_fg`, `box_border`, `graph_low`,
 `graph_mid`, `graph_high`).
+
+## Development
+
+```bash
+make            # debug build, with ASan and UBSan when installed
+make release    # optimized build
+make test       # unit tests (no FFmpeg needed)
+make golden     # render samples/ and compare with tests/golden/
+```
+
+On Fedora, `sudo dnf install libasan libubsan` for the sanitizers.
